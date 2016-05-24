@@ -2,9 +2,9 @@
 Active Directory information dumper via LDAP
 
 ##Introduction
-In an Active Directory domain, a lot of interesting information can be retreived via LDAP by any authenticated user (or machine).
-This makes LDAP an interesting protocol for gathering information in the recon phase of a pentest.
-A problem is that date from LDAP often is not available in an easy to read format.
+In an Active Directory domain, a lot of interesting information can be retrieved via LDAP by any authenticated user (or machine).
+This makes LDAP an interesting protocol for gathering information in the recon phase of a pentest of an internal network.
+A problem is that data from LDAP often is not available in an easy to read format.
 
 ldapdomaindump is a tool which aims to solve this problem, by collecting and parsing information available via LDAP and outputting it in a human readable HTML format, as well as machine readable json and csv/tsv/greppable files.
 
@@ -12,6 +12,16 @@ The tool was designed with the following goals in mind:
 - Easy overview of all users/groups/computers/policies in the domain
 - Authentication both via username and password, as with NTLM hashes (requires ldap3 >=1.3.1)
 - Possibility to run the tool with an existing authenticated connection to an LDAP service, allowing for integration with relaying tools such as impackets ntlmrelayx
+
+The tool outputs several files containing an overview of objects in the domain:
+- *domain_groups*: List of groups in the domain
+- *domain_users*: List of users in the domain
+- *domain_computers*: List of computer accounts in the domain
+- *domain_policy*: Domain policy such as password requirements and lockout policy
+
+As well as two grouped files:
+- *domain_users_by_group*: Domain users per group they are member of
+- *domain_computers_by_os*: Domain computers sorted by Operating System
 
 ##Dependencies and installation
 [ldap3](https://github.com/cannatag/ldap3) and [dnspython](https://github.com/rthalley/dnspython)
@@ -67,7 +77,8 @@ Misc options:
 ```
 
 ##Options
-At the moment, the options of the tool are limited. Most options are self-explanatory, just an important one is the *-r* option, which decides if a computers DNSHostName attribute should be resolved to an IPv4 address. While this can be very useful, the DNSHostName attribute is not automatically updated. When the AD Domain uses subdomains for computer hostnames, the DNSHostName will often be incorrect and will not resolve. Also resolving every hostname in the domain might cause a high load on the domain controller.
+At the moment, the options of the tool are limited. Most options are self-explanatory, just an important one is the *-r* option, which decides if a computers DNSHostName attribute should be resolved to an IPv4 address. 
+While this can be very useful, the DNSHostName attribute is not automatically updated. When the AD Domain uses subdomains for computer hostnames, the DNSHostName will often be incorrect and will not resolve. Also keep in mind that resolving every hostname in the domain might cause a high load on the domain controller.
 
 ##License
 MIT
