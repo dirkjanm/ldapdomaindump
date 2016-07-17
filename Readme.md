@@ -24,7 +24,7 @@ As well as two grouped files:
 - *domain_computers_by_os*: Domain computers sorted by Operating System
 
 ##Dependencies and installation
-[ldap3](https://github.com/cannatag/ldap3) and [dnspython](https://github.com/rthalley/dnspython)
+Requires [ldap3](https://github.com/cannatag/ldap3) and [dnspython](https://github.com/rthalley/dnspython)
 
 Both can be installed with `pip install ldap3 dnspython`
 

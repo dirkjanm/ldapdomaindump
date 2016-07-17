@@ -125,7 +125,7 @@ class domainDumper():
 
     #Get the server root from the default naming context
     def getRoot(self):
-        return self.server.info.naming_contexts[0]
+        return self.server.info.other['defaultNamingContext'][0]
 
     #Query the groups of the current user
     def getCurrentUserGroups(self,username):

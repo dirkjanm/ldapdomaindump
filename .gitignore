@@ -1,4 +1,5 @@
-build
-dist
+build/
+dist/
 ldapdomaindump.egg-info
 domainlookup.py
+*.pyc
