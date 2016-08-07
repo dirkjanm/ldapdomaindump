@@ -122,6 +122,7 @@ class domainDumper():
         self.computers = None #Domain computers
         self.policy = None #Domain policy
         self.groups_cnmap = None #CN map for group IDs to CN
+        self.groups_dict = None #Dictionary of groups by CN
 
     #Get the server root from the default naming context
     def getRoot(self):
@@ -154,7 +155,12 @@ class domainDumper():
 
     #Get all computers in the domain
     def getAllComputers(self):
-        self.connection.extend.standard.paged_search('CN=Computers,%s' % (self.root),'(objectClass=user)',attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+        self.connection.extend.standard.paged_search('%s' % (self.root),'(&(objectClass=computer)(objectClass=user))',attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+        return self.connection.entries
+
+    #Get all user SPNs
+    def getAllUserSpns(self):
+        self.connection.extend.standard.paged_search('%s' % (self.root),'(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))',attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
     #Get all defined groups
@@ -164,7 +170,7 @@ class domainDumper():
 
     #Get the domain policies (such as lockout policy)
     def getDomainPolicy(self):
-        self.connection.search(self.root,'(cn=Builtin)',attributes=ldap3.ALL_ATTRIBUTES)
+        self.connection.search(self.root,'(objectClass=domain)',attributes=ldap3.ALL_ATTRIBUTES)
         return self.connection.entries
 
     #Get all defined security groups
@@ -241,6 +247,12 @@ class domainDumper():
         self.groups_cnmap = cnmap
         return cnmap
 
+    #Create a dictionary where a groups CN returns the full object
+    def createGroupsDictByCn(self):
+        gdict = {grp.cn.values[0]:grp for grp in self.groups}
+        self.groups_dict = gdict
+        return gdict
+
     #Get CN from DN
     def getGroupCnFromDn(self,dnin):
         cn = self.unescapecn(dn.parse_dn(dnin)[0][1])
@@ -272,6 +284,23 @@ class domainDumper():
                 except KeyError:
                     #Group is not yet in dict
                     groupsdict[group] = [user]
+        #Append all the groups
+        if self.groups_dict is None:
+            self.createGroupsDictByCn()
+
+        #Append any groups that are members of groups
+        for group in self.groups:
+            try:
+                for parentgroup in group.memberOf.values:
+                    try:
+                        groupsdict[group.cn.values[0]].append(self.groups_dict[self.getGroupCnFromDn(parentgroup)])
+                    except KeyError:
+                        #Group is not yet in dict
+                        groupsdict[group.cn.values[0]] = [self.groups_dict[self.getGroupCnFromDn(parentgroup)]]
+            #Without subgroups this attribute does not exist
+            except LDAPAttributeError:
+                pass
+
         return groupsdict
 
     #Main function
@@ -299,7 +328,7 @@ class reportWriter():
         else:
             self.computerattributes = ['cn','sAMAccountName','dNSHostName','operatingSystem','operatingSystemServicePack','operatingSystemVersion','lastLogon','userAccountControl','whenCreated','objectSid','description']
         self.userattributes = ['cn','name','sAMAccountName','memberOf','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
-        self.groupattributes = ['cn','sAMAccountName','whenCreated','whenChanged','description','objectSid']
+        self.groupattributes = ['cn','sAMAccountName','memberOf','description','whenCreated','whenChanged','objectSid']
         self.policyattributes = ['cn','lockOutObservationWindow','lockoutDuration','lockoutThreshold','maxPwdAge','minPwdAge','minPwdLength','pwdHistoryLength','pwdProperties']
 
     #Escape HTML special chars
@@ -328,7 +357,7 @@ class reportWriter():
         return outflags
 
     #Generate a HTML table from a list of entries, with the specified attributes as column
-    def generateHtmlTable(self,listable,attributes,header='',firstTable=True):
+    def generateHtmlTable(self,listable,attributes,header='',firstTable=True,specialGroupsFormat=False):
         of = []
         #Only if this is the first table it is an actual table, the others are just bodies of the first table
         #This makes sure that multiple tables have their columns aligned to make it less messy
@@ -346,10 +375,17 @@ class reportWriter():
                 of.append(u'<th>%s</th>' % self.htmlescape(hdr))
         of.append(u'</tr>\n')
         for li in listable:
-            of.append(u'<tr>')
+            #Whether we should format group objects separately
+            if specialGroupsFormat and 'group' in li['objectClass'].values:
+                #Give it an extra class and pass it to the function below to make sure the CN is a link
+                liIsGroup = True
+                of.append(u'<tr class="group">')
+            else:
+                liIsGroup = False
+                of.append(u'<tr>')
             for att in attributes:
                 try:
-                    of.append(u'<td>%s</td>' % self.formatAttribute(li[att]))
+                    of.append(u'<td>%s</td>' % self.formatAttribute(li[att],liIsGroup))
                 except LDAPKeyError:
                     of.append(u'<td>&nbsp;</td>')
             of.append(u'</tr>\n')
@@ -361,7 +397,7 @@ class reportWriter():
         ol = []
         first = True
         for osfamily, members in groups.iteritems():
-            ol.append(self.generateHtmlTable(members,attributes,osfamily,first))
+            ol.append(self.generateHtmlTable(members,attributes,osfamily,first,specialGroupsFormat=True))
             if first:
                 first = False
         out = ''.join(ol)
@@ -423,7 +459,7 @@ class reportWriter():
         return value
 
     #Format an attribute to a human readable format
-    def formatAttribute(self,att):
+    def formatAttribute(self,att,formatCnAsGroup=False):
         aname = att.key.lower()
         #User flags
         if aname == 'useraccountcontrol':
@@ -438,8 +474,14 @@ class reportWriter():
             return '%.2f days' % self.nsToDays(att.value)
         if aname == 'lockoutobservationwindow' or  aname == 'lockoutduration':
             return '%.1f minutes' % self.nsToMinutes(att.value)
+        #Special case where the attribute is a CN and it should be made clear its a group
+        if aname == 'cn' and formatCnAsGroup:
+            return self.formatCnWithGroupLink(att.value)
         #Other
         return self.htmlescape(self.formatString(att.value))
+
+    def formatCnWithGroupLink(self,cn):
+        return u'Group: <a href="#cn_%s" title="%s">%s</a>' % (self.formatId(cn),self.htmlescape(cn),self.htmlescape(cn))
 
     #Convert a CN to a valid HTML id by replacing all non-ascii characters with a _
     def formatId(self,cn):
