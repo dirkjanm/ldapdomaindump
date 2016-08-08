@@ -284,19 +284,16 @@ class domainDumper():
                 except KeyError:
                     #Group is not yet in dict
                     groupsdict[group] = [user]
-        #Append all the groups
-        if self.groups_dict is None:
-            self.createGroupsDictByCn()
 
         #Append any groups that are members of groups
         for group in self.groups:
             try:
                 for parentgroup in group.memberOf.values:
                     try:
-                        groupsdict[group.cn.values[0]].append(self.groups_dict[self.getGroupCnFromDn(parentgroup)])
+                        groupsdict[self.getGroupCnFromDn(parentgroup)].append(group)
                     except KeyError:
                         #Group is not yet in dict
-                        groupsdict[group.cn.values[0]] = [self.groups_dict[self.getGroupCnFromDn(parentgroup)]]
+                        groupsdict[self.getGroupCnFromDn(parentgroup)] = [group]
             #Without subgroups this attribute does not exist
             except LDAPAttributeError:
                 pass
