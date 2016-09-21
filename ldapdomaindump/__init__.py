@@ -312,10 +312,9 @@ class domainDumper():
         rw.generateUsersReport(self)
         rw.generateGroupsReport(self)
         rw.generateComputersReport(self)
-        rw.generateUsersByGroupReport(self)
-        rw.generateComputersByOsReport(self)
         rw.generatePolicyReport(self)
-
+        rw.generateComputersByOsReport(self)
+        rw.generateUsersByGroupReport(self)
 
 class reportWriter():
     def __init__(self,config):
@@ -325,6 +324,8 @@ class reportWriter():
         else:
             self.computerattributes = ['cn','sAMAccountName','dNSHostName','operatingSystem','operatingSystemServicePack','operatingSystemVersion','lastLogon','userAccountControl','whenCreated','objectSid','description']
         self.userattributes = ['cn','name','sAMAccountName','memberOf','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
+        #In grouped view, don't include the memberOf property to reduce output size
+        self.userattributes_grouped = ['cn','name','sAMAccountName','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
         self.groupattributes = ['cn','sAMAccountName','memberOf','description','whenCreated','whenChanged','objectSid']
         self.policyattributes = ['cn','lockOutObservationWindow','lockoutDuration','lockoutThreshold','maxPwdAge','minPwdAge','minPwdLength','pwdHistoryLength','pwdProperties']
 
@@ -565,7 +566,7 @@ class reportWriter():
     def generateUsersByGroupReport(self,dd):
         grouped = dd.sortUsersByGroup(dd.users)
         if self.config.outputhtml:
-            html = self.generateGroupedHtmlTables(grouped,self.userattributes)
+            html = self.generateGroupedHtmlTables(grouped,self.userattributes_grouped)
             self.writeHtmlFile('%s.html' % self.config.users_by_group,html)
         if self.config.outputjson:
             jsonout = self.generateJsonGroupedList(grouped)
