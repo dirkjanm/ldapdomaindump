@@ -136,6 +136,9 @@ class domainDumper():
         except LDAPKeyError:
             #No groups, probably just member of the primary group
             return []
+        except IndexError:
+            #The username does not exist (might be a computer account)
+            return []
 
     #Check if the user is part of the Domain Admin group
     def isDomainAdmin(self,username):

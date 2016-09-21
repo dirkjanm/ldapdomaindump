@@ -28,7 +28,7 @@ Requires [ldap3](https://github.com/cannatag/ldap3) and [dnspython](https://gith
 
 Both can be installed with `pip install ldap3 dnspython`
 
-The ldapdomaindump package can be installed with `python setup.py install`
+The ldapdomaindump package can be installed with `python setup.py install` from the git source, or for the latest release with `pip install ldapdomaindump`.
 
 ##Usage
 There are 3 ways to use the tool:
