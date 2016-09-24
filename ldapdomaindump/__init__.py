@@ -397,15 +397,13 @@ class reportWriter():
     def generateGroupedHtmlTables(self,groups,attributes):
         ol = []
         first = True
-        for osfamily, members in groups.iteritems():
-            ol.append(self.generateHtmlTable(members,attributes,osfamily,first,specialGroupsFormat=True))
+        for groupname, members in groups.iteritems():
+            yield self.generateHtmlTable(members,attributes,groupname,first,specialGroupsFormat=True)
             if first:
                 first = False
-        out = ''.join(ol)
-        return out
 
     #Write generated HTML to file
-    def writeHtmlFile(self,rel_outfile,body):
+    def writeHtmlFile(self,rel_outfile,body,genfunc=None,genargs=None,closeTable=True):
         if not os.path.exists(self.config.basepath):
             os.makedirs(self.config.basepath)
         outfile = os.path.join(self.config.basepath,rel_outfile)
@@ -420,19 +418,29 @@ class reportWriter():
             except IOError:
                 log_warn('style.css not found in package directory, styling will be skipped')
             of.write('</head><body>')
-            of.write(body)
+            #If the generator is not specified, we should write the HTML blob directly
+            if genfunc is None:
+                of.write(body)
+            else:
+                for tpart in genfunc(*genargs):
+                    of.write(tpart)
             #Does the body contain an open table?
-            if '<table>' in body and not '</table>' in body:
+            if closeTable:
                 of.write('</table>')
             of.write('</body></html>')
 
     #Write generated JSON to file
-    def writeJsonFile(self,rel_outfile,body):
+    def writeJsonFile(self,rel_outfile,jsondata,genfunc=None,genargs=None):
         if not os.path.exists(self.config.basepath):
             os.makedirs(self.config.basepath)
         outfile = os.path.join(self.config.basepath,rel_outfile)
         with codecs.open(outfile,'w','utf8') as of:
-            of.write(body)
+            #If the generator is not specified, we should write the JSON blob directly
+            if genfunc is None:
+                of.write(jsondata)
+            else:
+                for jpart in genfunc(*genargs):
+                    of.write(jpart)
 
     #Write generated Greppable stuff to file
     def writeGrepFile(self,rel_outfile,body):
@@ -550,30 +558,38 @@ class reportWriter():
         return out
 
     #Convert a list of group dicts with entry lists to JSON string
-    #Same methods as previous functions are used
+    #Same methods as previous functions are used, except that text is returned
+    #from a generator rather than allocating everything in memory
     def generateJsonGroupedList(self,groups):
-        grouplist = ','.join([self.generateJsonGroup(group) for group in groups.iteritems()])
-        return '[' + grouplist + ']'
+        #Start of the list
+        yield '['
+        firstGroup = True
+        for group in groups.iteritems():
+            if not firstGroup:
+                #Separate items
+                yield ','
+            else:
+                firstGroup = False
+            yield self.generateJsonGroup(group)
+        yield ']'
 
     #Generate report of all computers grouped by OS family
     def generateComputersByOsReport(self,dd):
         grouped = dd.sortComputersByOS(dd.computers)
         if self.config.outputhtml:
-            html = self.generateGroupedHtmlTables(grouped,self.computerattributes)
-            self.writeHtmlFile('%s.html' % self.config.computers_by_os,html)
+            #Use the generator approach to save memory
+            self.writeHtmlFile('%s.html' % self.config.computers_by_os,None,genfunc=self.generateGroupedHtmlTables,genargs=(grouped,self.computerattributes))
         if self.config.outputjson:
-            jsonout = self.generateJsonGroupedList(grouped)
-            self.writeJsonFile('%s.json' % self.config.computers_by_os,jsonout)
+            self.writeJsonFile('%s.json' % self.config.computers_by_os,None,genfunc=self.generateJsonGroupedList,genargs=(grouped,))
 
     #Generate report of all groups and detailled user info
     def generateUsersByGroupReport(self,dd):
         grouped = dd.sortUsersByGroup(dd.users)
         if self.config.outputhtml:
-            html = self.generateGroupedHtmlTables(grouped,self.userattributes_grouped)
-            self.writeHtmlFile('%s.html' % self.config.users_by_group,html)
+            #Use the generator approach to save memory
+            self.writeHtmlFile('%s.html' % self.config.users_by_group,None,genfunc=self.generateGroupedHtmlTables,genargs=(grouped,self.userattributes_grouped))
         if self.config.outputjson:
-            jsonout = self.generateJsonGroupedList(grouped)
-            self.writeJsonFile('%s.json' % self.config.users_by_group,jsonout)
+            self.writeJsonFile('%s.json' % self.config.users_by_group,None,genfunc=self.generateJsonGroupedList,genargs=(grouped,))
 
     #Generate report with just a table of all users
     def generateUsersReport(self,dd):
