@@ -188,7 +188,7 @@ class domainDumper():
         self.connection.search(self.root,'(objectClass=domain)',attributes=['objectSid'])
         try:
             sid = self.connection.entries[0].objectSid
-        except LDAPAttributeError:
+        except (LDAPAttributeError,LDAPCursorError):
             return False
         except IndexError:
             return False
@@ -215,7 +215,7 @@ class domainDumper():
                 ip = 'error.NXDOMAIN'
             except dns.resolver.Timeout:
                 ip = 'error.TIMEOUT'
-            except LDAPAttributeError:
+            except (LDAPAttributeError,LDAPCursorError):
                 ip = 'error.NOHOSTNAME'
             #Construct a custom attribute as workaround
             ipatt = attribute.Attribute(ipdef, computer)
@@ -231,7 +231,7 @@ class domainDumper():
         for computer in items:
             try:
                 cos = computer.operatingSystem.value
-            except LDAPAttributeError:
+            except (LDAPAttributeError,LDAPCursorError):
                 cos = 'Unknown'
             try:
                 osdict[cos].append(computer)
@@ -277,7 +277,7 @@ class domainDumper():
             try:
                 ugroups = [self.getGroupCnFromDn(group) for group in user.memberOf.values]
             #If the user is only in the default group, its memberOf property wont exist
-            except LDAPAttributeError:
+            except (LDAPAttributeError,LDAPCursorError):
                 ugroups = []
             #Add the user default group
             ugroups.append(self.groups_cnmap[user.primaryGroupId.value])
@@ -298,7 +298,7 @@ class domainDumper():
                         #Group is not yet in dict
                         groupsdict[self.getGroupCnFromDn(parentgroup)] = [group]
             #Without subgroups this attribute does not exist
-            except LDAPAttributeError:
+            except (LDAPAttributeError,LDAPCursorError):
                 pass
 
         return groupsdict
