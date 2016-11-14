@@ -67,6 +67,7 @@ attr_translations = {'sAMAccountName':'SAM Name',
                     'userAccountControl':'Flags',
                     'objectSid':'SID',
                     'memberOf':'Member of groups',
+                    'primaryGroupId':'Primary group',
                     'dNSHostName':'DNS Hostname',
                     'whenCreated':'Created on',
                     'whenChanged':'Changed on',
@@ -121,7 +122,7 @@ class domainDumper():
         self.groups = None #Domain groups
         self.computers = None #Domain computers
         self.policy = None #Domain policy
-        self.groups_cnmap = None #CN map for group IDs to CN
+        self.groups_dnmap = None #CN map for group IDs to CN
         self.groups_dict = None #Dictionary of groups by CN
 
     #Get the server root from the default naming context
@@ -129,21 +130,28 @@ class domainDumper():
         return self.server.info.other['defaultNamingContext'][0]
 
     #Query the groups of the current user
-    def getCurrentUserGroups(self,username):
-        self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))' % username,attributes=['memberOf'])
+    def getCurrentUserGroups(self,username,domainsid=None):
+        self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))' % username,attributes=['memberOf','primaryGroupId'])
         try:
-            return self.connection.entries[0]['memberOf']
+            groups = self.connection.entries[0]['memberOf'].values
+            if domainsid is not None:
+                groups.append(self.getGroupDNfromID(domainsid,self.connection.entries[0]['primaryGroupId'].value))
+            return groups
         except LDAPKeyError:
             #No groups, probably just member of the primary group
-            return []
+            if domainsid is not None:
+                primarygroup = self.getGroupDNfromID(domainsid,self.connection.entries[0]['primaryGroupId'].value)
+                return [primarygroup]
+            else:
+                return []
         except IndexError:
             #The username does not exist (might be a computer account)
             return []
 
     #Check if the user is part of the Domain Admins or Enterprise Admins group, or any of their subgroups
     def isDomainAdmin(self,username):
-        groups = self.getCurrentUserGroups(username)
         domainsid = self.getRootSid()
+        groups = self.getCurrentUserGroups(username,domainsid)
         #Get DA and EA group DNs
         dagroupdn = self.getDAGroupDN(domainsid)
         eagroupdn = self.getEAGroupDN(domainsid)
@@ -161,6 +169,7 @@ class domainDumper():
         self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s)(memberOf:1.2.840.113556.1.4.1941:=%s))' % (username,eagroupdn),attributes=['sAMAccountName'])
         if len(self.connection.entries) > 0:
             return True
+        #At last, check the users primary group ID
         return False
 
     #Get all users
@@ -209,16 +218,19 @@ class domainDumper():
         self.connection.extend.standard.paged_search(self.root,'(&(objectCategory=person)(objectClass=user)(memberOf:1.2.840.113556.1.4.1941:=%s))' % groupdn,attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
+    #Resolve group ID to DN
+    def getGroupDNfromID(self,domainsid,gid):
+        self.connection.search(self.root,'(objectSid=%s-%d)' % (domainsid,gid),attributes=['distinguishedName'])
+        return self.connection.entries[0]['distinguishedName'].value
+
     #Get Domain Admins group DN
     def getDAGroupDN(self,domainsid):
-        self.connection.search(self.root,'(objectSid=%s-512)' % domainsid,attributes=['distinguishedName'])
-        return self.connection.entries[0]['distinguishedName'].value
+        return self.getGroupDNfromID(domainsid,512)
 
     #Get Enterprise Admins group DN
     def getEAGroupDN(self,domainsid):
-        self.connection.search(self.root,'(objectSid=%s-519)' % domainsid,attributes=['distinguishedName'])
         try:
-            return self.connection.entries[0]['distinguishedName'].value
+            return self.getGroupDNfromID(domainsid,519)
         except (LDAPAttributeError,LDAPCursorError,IndexError):
             #This does not exist, could be in a parent domain
             return False
@@ -267,13 +279,13 @@ class domainDumper():
 
     #Map all groups on their ID (taken from their SID) to CNs
     #This is used for getting the primary group of a user
-    def mapGroupsIdsToCns(self):
-        cnmap = {}
+    def mapGroupsIdsToDns(self):
+        dnmap = {}
         for group in self.groups:
             gid = int(group.objectSid.value.split('-')[-1])
-            cnmap[gid] = group.cn.values[0]
-        self.groups_cnmap = cnmap
-        return cnmap
+            dnmap[gid] = group.distinguishedName.values[0]
+        self.groups_dnmap = dnmap
+        return dnmap
 
     #Create a dictionary where a groups CN returns the full object
     def createGroupsDictByCn(self):
@@ -296,7 +308,7 @@ class domainDumper():
     def sortUsersByGroup(self,items):
         groupsdict = {}
         #Make sure the group CN mapping already exists
-        if self.groups_cnmap is None:
+        if self.groups_dnmap is None:
             self.mapGroupsIdsToCns()
         for user in items:
             try:
@@ -305,7 +317,7 @@ class domainDumper():
             except (LDAPAttributeError,LDAPCursorError):
                 ugroups = []
             #Add the user default group
-            ugroups.append(self.groups_cnmap[user.primaryGroupId.value])
+            ugroups.append(self.getGroupCnFromDn(self.groups_dnmap[user.primaryGroupId.value]))
             for group in ugroups:
                 try:
                     groupsdict[group].append(user)
@@ -336,7 +348,6 @@ class domainDumper():
         if self.config.lookuphostnames:
             self.lookupComputerDnsNames()
         self.policy = self.getDomainPolicy()
-        print self.isDomainAdmin('ta0')
         rw = reportWriter(self.config)
         rw.generateUsersReport(self)
         rw.generateGroupsReport(self)
@@ -352,7 +363,7 @@ class reportWriter():
             self.computerattributes = ['cn','sAMAccountName','dNSHostName','IPv4','operatingSystem','operatingSystemServicePack','operatingSystemVersion','lastLogon','userAccountControl','whenCreated','objectSid','description']
         else:
             self.computerattributes = ['cn','sAMAccountName','dNSHostName','operatingSystem','operatingSystemServicePack','operatingSystemVersion','lastLogon','userAccountControl','whenCreated','objectSid','description']
-        self.userattributes = ['cn','name','sAMAccountName','memberOf','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
+        self.userattributes = ['cn','name','sAMAccountName','memberOf','primaryGroupId','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
         #In grouped view, don't include the memberOf property to reduce output size
         self.userattributes_grouped = ['cn','name','sAMAccountName','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
         self.groupattributes = ['cn','sAMAccountName','memberOf','description','whenCreated','whenChanged','objectSid']
@@ -502,6 +513,9 @@ class reportWriter():
         #List of groups
         if aname == 'member' or aname == 'memberof' and type(att.values) is list:
             return self.formatGroupsHtml(att.values)
+        #Primary group
+        if aname == 'primarygroupid':
+            return self.formatGroupsHtml([self.dd.groups_dnmap[att.value]])
         #Pwd flags
         if aname == 'pwdproperties':
             return ', '.join(self.parseFlags(att,pwd_flags))
@@ -509,6 +523,8 @@ class reportWriter():
             return '%.2f days' % self.nsToDays(att.value)
         if aname == 'lockoutobservationwindow' or  aname == 'lockoutduration':
             return '%.1f minutes' % self.nsToMinutes(att.value)
+        if aname == 'objectsid':
+            return '<abbr title="%s">%s</abbr>' % (att.value,att.value.split('-')[-1])
         #Special case where the attribute is a CN and it should be made clear its a group
         if aname == 'cn' and formatCnAsGroup:
             return self.formatCnWithGroupLink(att.value)
@@ -547,6 +563,8 @@ class reportWriter():
         #List of groups
         if aname == 'member' or aname == 'memberof' and type(att.values) is list:
             return self.formatGroupsGrep(att.values)
+        if aname == 'primarygroupid':
+            return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
         #Pwd flags
         if aname == 'pwdproperties':
             return ', '.join(self.parseFlags(att,pwd_flags))
@@ -619,6 +637,9 @@ class reportWriter():
 
     #Generate report with just a table of all users
     def generateUsersReport(self,dd):
+        #Copy dd to this object, to be able to reference it
+        self.dd = dd
+        dd.mapGroupsIdsToDns()
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.users,self.userattributes,'Domain users')
             self.writeHtmlFile('%s.html' % self.config.usersfile,html)
