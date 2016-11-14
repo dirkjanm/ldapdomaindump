@@ -140,15 +140,27 @@ class domainDumper():
             #The username does not exist (might be a computer account)
             return []
 
-    #Check if the user is part of the Domain Admin group
+    #Check if the user is part of the Domain Admins or Enterprise Admins group, or any of their subgroups
     def isDomainAdmin(self,username):
         groups = self.getCurrentUserGroups(username)
         domainsid = self.getRootSid()
-        dagroup = self.getDAGroup(domainsid)
-        #TODO: check if any groups of this are subgroups of (domain) administrator
+        #Get DA and EA group DNs
+        dagroupdn = self.getDAGroupDN(domainsid)
+        eagroupdn = self.getEAGroupDN(domainsid)
+        #First, simple checks
         for group in groups:
-            if 'CN=Administrators' in group or 'CN=Domain Admins' in group or dagroup.distinguishedName.value == group:
+            if 'CN=Administrators' in group or 'CN=Domain Admins' in group or dagroupdn == group:
                 return True
+            #Also for enterprise admins if applicable
+            if 'CN=Enterprise Admins' in group or (eagroupdn is not False and eagroupdn == group):
+                return True
+        #Now, just do a recursive check in both groups and their subgroups using LDAP_MATCHING_RULE_IN_CHAIN
+        self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s)(memberOf:1.2.840.113556.1.4.1941:=%s))' % (username,dagroupdn),attributes=['sAMAccountName'])
+        if len(self.connection.entries) > 0:
+            return True
+        self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s)(memberOf:1.2.840.113556.1.4.1941:=%s))' % (username,eagroupdn),attributes=['sAMAccountName'])
+        if len(self.connection.entries) > 0:
+            return True
         return False
 
     #Get all users
@@ -188,16 +200,29 @@ class domainDumper():
         self.connection.search(self.root,'(objectClass=domain)',attributes=['objectSid'])
         try:
             sid = self.connection.entries[0].objectSid
-        except (LDAPAttributeError,LDAPCursorError):
-            return False
-        except IndexError:
+        except (LDAPAttributeError,LDAPCursorError,IndexError):
             return False
         return sid
 
+    #Get group members recursively using LDAP_MATCHING_RULE_IN_CHAIN (1.2.840.113556.1.4.1941)
+    def getRecursiveGroupmembers(self,groupdn):
+        self.connection.extend.standard.paged_search(self.root,'(&(objectCategory=person)(objectClass=user)(memberOf:1.2.840.113556.1.4.1941:=%s))' % groupdn,attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+        return self.connection.entries
+
     #Get Domain Admins group DN
-    def getDAGroup(self,domainsid):
-        self.connection.search(self.root,'(objectSid=%s-512)' % domainsid,attributes=ldap3.ALL_ATTRIBUTES)
-        return self.connection.entries[0]
+    def getDAGroupDN(self,domainsid):
+        self.connection.search(self.root,'(objectSid=%s-512)' % domainsid,attributes=['distinguishedName'])
+        return self.connection.entries[0]['distinguishedName'].value
+
+    #Get Enterprise Admins group DN
+    def getEAGroupDN(self,domainsid):
+        self.connection.search(self.root,'(objectSid=%s-519)' % domainsid,attributes=['distinguishedName'])
+        try:
+            return self.connection.entries[0]['distinguishedName'].value
+        except (LDAPAttributeError,LDAPCursorError,IndexError):
+            #This does not exist, could be in a parent domain
+            return False
+
 
     #Lookup all computer DNS names to get their IP
     def lookupComputerDnsNames(self):
@@ -311,6 +336,7 @@ class domainDumper():
         if self.config.lookuphostnames:
             self.lookupComputerDnsNames()
         self.policy = self.getDomainPolicy()
+        print self.isDomainAdmin('ta0')
         rw = reportWriter(self.config)
         rw.generateUsersReport(self)
         rw.generateGroupsReport(self)
