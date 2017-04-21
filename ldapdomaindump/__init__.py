@@ -22,7 +22,7 @@
 #
 ####################
 
-import sys, os, re, codecs, json, argparse, getpass
+import sys, os, re, codecs, json, argparse, getpass, base64
 # import class and constants
 from datetime import datetime
 from urllib import quote_plus
@@ -32,13 +32,14 @@ from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
 from ldap3.core.exceptions import *
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
+from ldap3.protocol.formatters.formatters import format_sid
 
-#dnspython, for resolving hostnames
+# dnspython, for resolving hostnames
 import dns.resolver
 
 
-#User account control flags
-#From: https://blogs.technet.microsoft.com/askpfeplat/2014/01/15/understanding-the-useraccountcontrol-attribute-in-active-directory/
+# User account control flags
+# From: https://blogs.technet.microsoft.com/askpfeplat/2014/01/15/understanding-the-useraccountcontrol-attribute-in-active-directory/
 uac_flags = {'ACCOUNT_DISABLED':0x00000002,
         'ACCOUNT_LOCKED':0x00000010,
         'PASSWD_NOTREQD':0x00000020,
@@ -51,7 +52,7 @@ uac_flags = {'ACCOUNT_DISABLED':0x00000002,
         'PASSWORD_EXPIRED': 0x00800000
         }
 
-#Password policy flags
+# Password policy flags
 pwd_flags = {'PASSWORD_COMPLEX':0x01,
             'PASSWORD_NO_ANON_CHANGE': 0x02,
             'PASSWORD_NO_CLEAR_CHANGE': 0x04,
@@ -59,7 +60,30 @@ pwd_flags = {'PASSWORD_COMPLEX':0x01,
             'PASSWORD_STORE_CLEARTEXT': 0x10,
             'REFUSE_PASSWORD_CHANGE': 0x20}
 
-#Common attribute pretty translations
+# Domain trust flags
+# From: https://msdn.microsoft.com/en-us/library/cc223779.aspx
+trust_flags = {'NON_TRANSITIVE':0x00000001,
+               'UPLEVEL_ONLY':0x00000002,
+               'QUARANTINED_DOMAIN':0x00000004,
+               'FOREST_TRANSITIVE':0x00000008,
+               'CROSS_ORGANIZATION':0x00000010,
+               'WITHIN_FOREST':0x00000020,
+               'TREAT_AS_EXTERNAL':0x00000040,
+               'USES_RC4_ENCRYPTION':0x00000080,
+               'CROSS_ORGANIZATION_NO_TGT_DELEGATION':0x00000200,
+               'PIM_TRUST':0x00000400}
+
+# Domain trust direction
+# From: https://msdn.microsoft.com/en-us/library/cc223768.aspx
+trust_directions = {'INBOUND':0x01,
+                    'OUTBOUND':0x02,
+                    'BIDIRECTIONAL':0x03}
+# Domain trust types
+trust_type = {'DOWNLEVEL':0x01,
+              'UPLEVEL':0x02,
+              'MIT':0x03}
+
+# Common attribute pretty translations
 attr_translations = {'sAMAccountName':'SAM Name',
                     'cn':'CN','operatingSystem':'Operating System',
                     'operatingSystemServicePack':'Service Pack',
@@ -90,6 +114,7 @@ class domainDumpConfig():
         self.usersfile = 'domain_users' #User accounts
         self.computersfile = 'domain_computers' #Computer accounts
         self.policyfile = 'domain_policy' #General domain attributes
+        self.trustsfile = 'domain_trusts' #Domain trusts attributes
 
         #Combined files basenames
         self.users_by_group = 'domain_users_by_group' #Users sorted by group
@@ -195,6 +220,11 @@ class domainDumper():
     #Get the domain policies (such as lockout policy)
     def getDomainPolicy(self):
         self.connection.search(self.root,'(objectClass=domain)',attributes=ldap3.ALL_ATTRIBUTES)
+        return self.connection.entries
+
+    #Get domain trusts
+    def getTrusts(self):
+        self.connection.search(self.root,'(objectClass=trustedDomain)',attributes=ldap3.ALL_ATTRIBUTES)
         return self.connection.entries
 
     #Get all defined security groups
@@ -348,11 +378,13 @@ class domainDumper():
         if self.config.lookuphostnames:
             self.lookupComputerDnsNames()
         self.policy = self.getDomainPolicy()
+        self.trusts = self.getTrusts()
         rw = reportWriter(self.config)
         rw.generateUsersReport(self)
         rw.generateGroupsReport(self)
         rw.generateComputersReport(self)
         rw.generatePolicyReport(self)
+        rw.generateTrustsReport(self)
         rw.generateComputersByOsReport(self)
         rw.generateUsersByGroupReport(self)
 
@@ -368,6 +400,7 @@ class reportWriter():
         self.userattributes_grouped = ['cn','name','sAMAccountName','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
         self.groupattributes = ['cn','sAMAccountName','memberOf','description','whenCreated','whenChanged','objectSid']
         self.policyattributes = ['cn','lockOutObservationWindow','lockoutDuration','lockoutThreshold','maxPwdAge','minPwdAge','minPwdLength','pwdHistoryLength','pwdProperties']
+        self.trustattributes = ['cn','flatName','securityIdentifier','trustAttributes','trustDirection','trustType']
 
     #Escape HTML special chars
     def htmlescape(self,html):
@@ -519,6 +552,18 @@ class reportWriter():
         #Pwd flags
         if aname == 'pwdproperties':
             return ', '.join(self.parseFlags(att,pwd_flags))
+        #Domain trust flags
+        if aname == 'trustattributes':
+            return ', '.join(self.parseFlags(att,trust_flags))
+        if aname == 'trustdirection':
+            if  att.value == 0:
+                return 'DISABLED'
+            else:
+                return ', '.join(self.parseFlags(att,trust_directions))
+        if aname == 'trusttype':
+            return ', '.join(self.parseFlags(att,trust_type))
+        if aname == 'securityidentifier':
+            return format_sid(att.raw_values[0])
         if aname == 'minpwdage' or  aname == 'maxpwdage':
             return '%.2f days' % self.nsToDays(att.value)
         if aname == 'lockoutobservationwindow' or  aname == 'lockoutduration':
@@ -565,6 +610,18 @@ class reportWriter():
             return self.formatGroupsGrep(att.values)
         if aname == 'primarygroupid':
             return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
+        #Domain trust flags
+        if aname == 'trustattributes':
+            return ', '.join(self.parseFlags(att,trust_flags))
+        if aname == 'trustdirection':
+            if att.value == 0:
+                return 'DISABLED'
+            else:
+                return ', '.join(self.parseFlags(att,trust_directions))
+        if aname == 'trusttype':
+            return ', '.join(self.parseFlags(att,trust_type))
+        if aname == 'securityidentifier':
+            return format_sid(att.raw_values[0])
         #Pwd flags
         if aname == 'pwdproperties':
             return ', '.join(self.parseFlags(att,pwd_flags))
@@ -685,6 +742,18 @@ class reportWriter():
         if self.config.outputgrep:
             grepout = self.generateGrepList(dd.policy,self.policyattributes)
             self.writeGrepFile('%s.grep' % self.config.policyfile,grepout)
+
+    #Generate policy report
+    def generateTrustsReport(self,dd):
+        if self.config.outputhtml:
+            html = self.generateHtmlTable(dd.trusts,self.trustattributes,'Domain trusts')
+            self.writeHtmlFile('%s.html' % self.config.trustsfile,html)
+        if self.config.outputjson:
+            jsonout = self.generateJsonList(dd.trusts)
+            self.writeJsonFile('%s.json' % self.config.trustsfile,jsonout)
+        if self.config.outputgrep:
+            grepout = self.generateGrepList(dd.trusts,self.trustattributes)
+            self.writeGrepFile('%s.grep' % self.config.trustsfile,grepout)
 
 #Some quick logging helpers
 def log_warn(text):

@@ -18,6 +18,7 @@ The tool outputs several files containing an overview of objects in the domain:
 - *domain_users*: List of users in the domain
 - *domain_computers*: List of computer accounts in the domain
 - *domain_policy*: Domain policy such as password requirements and lockout policy
+- *domain_trusts*: Incoming and outgoing domain trusts, and their properties
 
 As well as two grouped files:
 - *domain_users_by_group*: Domain users per group they are member of
