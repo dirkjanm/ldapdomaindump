@@ -1,7 +1,7 @@
-#LDAPDomainDump
+# LDAPDomainDump
 Active Directory information dumper via LDAP
 
-##Introduction
+## Introduction
 In an Active Directory domain, a lot of interesting information can be retrieved via LDAP by any authenticated user (or machine).
 This makes LDAP an interesting protocol for gathering information in the recon phase of a pentest of an internal network.
 A problem is that data from LDAP often is not available in an easy to read format.
@@ -23,14 +23,14 @@ As well as two grouped files:
 - *domain_users_by_group*: Domain users per group they are member of
 - *domain_computers_by_os*: Domain computers sorted by Operating System
 
-##Dependencies and installation
+## Dependencies and installation
 Requires [ldap3](https://github.com/cannatag/ldap3) > 2.0 and [dnspython](https://github.com/rthalley/dnspython)
 
 Both can be installed with `pip install ldap3 dnspython`
 
 The ldapdomaindump package can be installed with `python setup.py install` from the git source, or for the latest release with `pip install ldapdomaindump`.
 
-##Usage
+## Usage
 There are 3 ways to use the tool:
 - With just the source, run `python ldapdomaindump.py`
 - After installing, by running `python -m ldapdomaindump`
@@ -48,7 +48,7 @@ OS/membership information to HTML/JSON/greppable output.
 
 Required options:
   HOSTNAME              Hostname/ip or ldap://host:port connection string to
-                        connect to
+                        connect to (use ldaps:// to use SSL)
 
 Main options:
   -h, --help            show this help message and exit
@@ -76,9 +76,9 @@ Misc options:
                         domain controller IP)
 ```
 
-##Options
+## Options
 At the moment, the options of the tool are limited. Most options are self-explanatory, just an important one is the *-r* option, which decides if a computers DNSHostName attribute should be resolved to an IPv4 address. 
 While this can be very useful, the DNSHostName attribute is not automatically updated. When the AD Domain uses subdomains for computer hostnames, the DNSHostName will often be incorrect and will not resolve. Also keep in mind that resolving every hostname in the domain might cause a high load on the domain controller.
 
-##License
+## License
 MIT
