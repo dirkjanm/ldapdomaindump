@@ -125,6 +125,9 @@ class domainDumpConfig():
         self.outputjson = True
         self.outputgrep = True
 
+        #Output json for groups
+        self.groupedjson = False
+
         #Default field delimiter for greppable format is a tab
         self.grepsplitchar = '\t'
 
@@ -680,7 +683,7 @@ class reportWriter():
         if self.config.outputhtml:
             #Use the generator approach to save memory
             self.writeHtmlFile('%s.html' % self.config.computers_by_os,None,genfunc=self.generateGroupedHtmlTables,genargs=(grouped,self.computerattributes))
-        if self.config.outputjson:
+        if self.config.outputjson and self.config.groupedjson:
             self.writeJsonFile('%s.json' % self.config.computers_by_os,None,genfunc=self.generateJsonGroupedList,genargs=(grouped,))
 
     #Generate report of all groups and detailled user info
@@ -689,7 +692,7 @@ class reportWriter():
         if self.config.outputhtml:
             #Use the generator approach to save memory
             self.writeHtmlFile('%s.html' % self.config.users_by_group,None,genfunc=self.generateGroupedHtmlTables,genargs=(grouped,self.userattributes_grouped))
-        if self.config.outputjson:
+        if self.config.outputjson and self.config.groupedjson:
             self.writeJsonFile('%s.json' % self.config.users_by_group,None,genfunc=self.generateJsonGroupedList,genargs=(grouped,))
 
     #Generate report with just a table of all users
@@ -773,6 +776,7 @@ def main():
     parser.add_argument("host", type=str,metavar='HOSTNAME',help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
     parser.add_argument("-u","--user",type=str,metavar='USERNAME',help="DOMAIN\username for authentication, leave empty for anonymous authentication")
     parser.add_argument("-p","--password",type=str,metavar='PASSWORD',help="Password or LM:NTLM hash, will prompt if not specified")
+    parser.add_argument("-at","--authtype",type=str,choices=['NTLM','SIMPLE'],default='NTLM',help="Authentication type (NTLM or SIMPLE, default: NTLM)")
 
     #Output parameters
     outputgroup = parser.add_argument_group("Output options")
@@ -780,6 +784,7 @@ def main():
     outputgroup.add_argument("--no-html", action='store_true',help="Disable HTML output")
     outputgroup.add_argument("--no-json", action='store_true',help="Disable JSON output")
     outputgroup.add_argument("--no-grep", action='store_true',help="Disable Greppable output")
+    outputgroup.add_argument("--grouped-json", action='store_true', default=False, help="Also write json files for grouped files (default: disabled)")
     outputgroup.add_argument("-d","--delimiter",help="Field delimiter for greppable output (default: tab)")
 
     #Additional options
@@ -811,10 +816,16 @@ def main():
     #Custom outdir?
     if args.outdir is not None:
         cnf.basepath = args.outdir
+    #Do we really need grouped json files?
+    cnf.groupedjson = args.grouped_json
+
     #Prompt for password if not set
     authentication = None
     if args.user is not None:
-        authentication = NTLM
+        if args.authtype == 'SIMPLE':
+            authentication = 'SIMPLE'
+        else:
+            authentication = NTLM
         if not '\\' in args.user:
             log_warn('Username must include a domain, use: DOMAIN\username')
             sys.exit(1)
