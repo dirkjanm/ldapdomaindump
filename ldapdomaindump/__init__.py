@@ -1,6 +1,6 @@
 ####################
 #
-# Copyright (c) 2016 Dirk-jan Mollema
+# Copyright (c) 2017 Dirk-jan Mollema
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -288,12 +288,12 @@ class domainDumper():
             except (LDAPAttributeError,LDAPCursorError):
                 ip = 'error.NOHOSTNAME'
             #Construct a custom attribute as workaround
-            ipatt = attribute.Attribute(ipdef, computer)
+            ipatt = attribute.Attribute(ipdef, computer, None)
             ipatt.__dict__['_response'] = ip
             ipatt.__dict__['raw_values'] = [ip]
             ipatt.__dict__['values'] = [ip]
             #Add the attribute to the entry's dictionary
-            computer._attributes['IPv4'] = ipatt
+            computer._state.attributes['IPv4'] = ipatt
 
     #Create a dictionary of all operating systems with the computer accounts that are associated
     def sortComputersByOS(self,items):
