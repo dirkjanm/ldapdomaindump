@@ -39,9 +39,9 @@ There are 3 ways to use the tool:
 
 Help can be obtained with the -h switch:
 ```
-usage: ldapdomaindump.py [-h] [-u USERNAME] [-p PASSWORD] [-o DIRECTORY]
-                         [--no-html] [--no-json] [--no-grep] [-d DELIMITER]
-                         [-r] [-n DNS_SERVER]
+usage: ldapdomaindump.py [-h] [-u USERNAME] [-p PASSWORD] [-at {NTLM,SIMPLE}]
+                         [-o DIRECTORY] [--no-html] [--no-json] [--no-grep]
+                         [--grouped-json] [-d DELIMITER] [-r] [-n DNS_SERVER]
                          HOSTNAME
 
 Domain information dumper via LDAP. Dumps users/computers/groups and
@@ -58,6 +58,8 @@ Main options:
                         anonymous authentication
   -p PASSWORD, --password PASSWORD
                         Password or LM:NTLM hash, will prompt if not specified
+  -at {NTLM,SIMPLE}, --authtype {NTLM,SIMPLE}
+                        Authentication type (NTLM or SIMPLE, default: NTLM)
 
 Output options:
   -o DIRECTORY, --outdir DIRECTORY
@@ -66,6 +68,8 @@ Output options:
   --no-html             Disable HTML output
   --no-json             Disable JSON output
   --no-grep             Disable Greppable output
+  --grouped-json        Also write json files for grouped files (default:
+                        disabled)
   -d DELIMITER, --delimiter DELIMITER
                         Field delimiter for greppable output (default: tab)
 
@@ -78,7 +82,14 @@ Misc options:
 ```
 
 ## Options
-At the moment, the options of the tool are limited. Most options are self-explanatory, just an important one is the *-r* option, which decides if a computers DNSHostName attribute should be resolved to an IPv4 address. 
+### Authentication
+Most AD servers support NTLM authentication. In the rare case that it does not, use --authtype SIMPLE.
+
+### Output formats
+By default the tool outputs all files in HTML, JSON and tab delimited output (greppable). There are also two grouped files (users_by_group and computers_by_os) for convenience. These do not have a greppable output. JSON output for grouped files is disabled by default since it creates very large files without any data that isn't present in the other files already.
+
+### DNS resolving
+An important option is the *-r* option, which decides if a computers DNSHostName attribute should be resolved to an IPv4 address. 
 While this can be very useful, the DNSHostName attribute is not automatically updated. When the AD Domain uses subdomains for computer hostnames, the DNSHostName will often be incorrect and will not resolve. Also keep in mind that resolving every hostname in the domain might cause a high load on the domain controller.
 
 ## License
