@@ -29,7 +29,7 @@ from urllib import quote_plus
 
 import ldap3
 from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
-from ldap3.core.exceptions import *
+from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
 from ldap3.protocol.formatters.formatters import format_sid
@@ -41,24 +41,24 @@ import dns.resolver
 # User account control flags
 # From: https://blogs.technet.microsoft.com/askpfeplat/2014/01/15/understanding-the-useraccountcontrol-attribute-in-active-directory/
 uac_flags = {'ACCOUNT_DISABLED':0x00000002,
-        'ACCOUNT_LOCKED':0x00000010,
-        'PASSWD_NOTREQD':0x00000020,
-        'PASSWD_CANT_CHANGE': 0x00000040,
-        'NORMAL_ACCOUNT': 0x00000200,
-        'WORKSTATION_ACCOUNT':0x00001000,
-        'SERVER_TRUST_ACCOUNT': 0x00002000,
-        'DONT_EXPIRE_PASSWD': 0x00010000,
-        'SMARTCARD_REQUIRED': 0x00040000,
-        'PASSWORD_EXPIRED': 0x00800000
-        }
+             'ACCOUNT_LOCKED':0x00000010,
+             'PASSWD_NOTREQD':0x00000020,
+             'PASSWD_CANT_CHANGE': 0x00000040,
+             'NORMAL_ACCOUNT': 0x00000200,
+             'WORKSTATION_ACCOUNT':0x00001000,
+             'SERVER_TRUST_ACCOUNT': 0x00002000,
+             'DONT_EXPIRE_PASSWD': 0x00010000,
+             'SMARTCARD_REQUIRED': 0x00040000,
+             'PASSWORD_EXPIRED': 0x00800000
+            }
 
 # Password policy flags
 pwd_flags = {'PASSWORD_COMPLEX':0x01,
-            'PASSWORD_NO_ANON_CHANGE': 0x02,
-            'PASSWORD_NO_CLEAR_CHANGE': 0x04,
-            'LOCKOUT_ADMINS': 0x08,
-            'PASSWORD_STORE_CLEARTEXT': 0x10,
-            'REFUSE_PASSWORD_CHANGE': 0x20}
+             'PASSWORD_NO_ANON_CHANGE': 0x02,
+             'PASSWORD_NO_CLEAR_CHANGE': 0x04,
+             'LOCKOUT_ADMINS': 0x08,
+             'PASSWORD_STORE_CLEARTEXT': 0x10,
+             'REFUSE_PASSWORD_CHANGE': 0x20}
 
 # Domain trust flags
 # From: https://msdn.microsoft.com/en-us/library/cc223779.aspx
@@ -85,26 +85,27 @@ trust_type = {'DOWNLEVEL':0x01,
 
 # Common attribute pretty translations
 attr_translations = {'sAMAccountName':'SAM Name',
-                    'cn':'CN','operatingSystem':'Operating System',
-                    'operatingSystemServicePack':'Service Pack',
-                    'operatingSystemVersion':'OS Version',
-                    'userAccountControl':'Flags',
-                    'objectSid':'SID',
-                    'memberOf':'Member of groups',
-                    'primaryGroupId':'Primary group',
-                    'dNSHostName':'DNS Hostname',
-                    'whenCreated':'Created on',
-                    'whenChanged':'Changed on',
-                    'IPv4':'IPv4 Address',
-                    'lockOutObservationWindow':'Lockout time window',
-                    'lockoutDuration':'Lockout Duration',
-                    'lockoutThreshold':'Lockout Threshold',
-                    'maxPwdAge':'Max password age',
-                    'minPwdAge':'Min password age',
-                    'minPwdLength':'Min password length'}
+                     'cn':'CN',
+                     'operatingSystem':'Operating System',
+                     'operatingSystemServicePack':'Service Pack',
+                     'operatingSystemVersion':'OS Version',
+                     'userAccountControl':'Flags',
+                     'objectSid':'SID',
+                     'memberOf':'Member of groups',
+                     'primaryGroupId':'Primary group',
+                     'dNSHostName':'DNS Hostname',
+                     'whenCreated':'Created on',
+                     'whenChanged':'Changed on',
+                     'IPv4':'IPv4 Address',
+                     'lockOutObservationWindow':'Lockout time window',
+                     'lockoutDuration':'Lockout Duration',
+                     'lockoutThreshold':'Lockout Threshold',
+                     'maxPwdAge':'Max password age',
+                     'minPwdAge':'Min password age',
+                     'minPwdLength':'Min password length'}
 
 #Class containing the default config
-class domainDumpConfig():
+class domainDumpConfig(object):
     def __init__(self):
         #Base path
         self.basepath = '.'
@@ -136,8 +137,8 @@ class domainDumpConfig():
         self.dnsserver = '' #Addres of the DNS server to use, if not specified default DNS will be used
 
 #Domaindumper main class
-class domainDumper():
-    def __init__(self,server,connection,config,root=None):
+class domainDumper(object):
+    def __init__(self, server, connection, config, root=None):
         self.server = server
         self.connection = connection
         self.config = config
@@ -152,23 +153,24 @@ class domainDumper():
         self.policy = None #Domain policy
         self.groups_dnmap = None #CN map for group IDs to CN
         self.groups_dict = None #Dictionary of groups by CN
+        self.trusts = None #Domain trusts
 
     #Get the server root from the default naming context
     def getRoot(self):
         return self.server.info.other['defaultNamingContext'][0]
 
     #Query the groups of the current user
-    def getCurrentUserGroups(self,username,domainsid=None):
-        self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))' % username,attributes=['memberOf','primaryGroupId'])
+    def getCurrentUserGroups(self, username, domainsid=None):
+        self.connection.search(self.root, '(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s))' % username, attributes=['memberOf', 'primaryGroupId'])
         try:
             groups = self.connection.entries[0]['memberOf'].values
             if domainsid is not None:
-                groups.append(self.getGroupDNfromID(domainsid,self.connection.entries[0]['primaryGroupId'].value))
+                groups.append(self.getGroupDNfromID(domainsid, self.connection.entries[0]['primaryGroupId'].value))
             return groups
         except LDAPKeyError:
             #No groups, probably just member of the primary group
             if domainsid is not None:
-                primarygroup = self.getGroupDNfromID(domainsid,self.connection.entries[0]['primaryGroupId'].value)
+                primarygroup = self.getGroupDNfromID(domainsid, self.connection.entries[0]['primaryGroupId'].value)
                 return [primarygroup]
             else:
                 return []
@@ -177,9 +179,9 @@ class domainDumper():
             return []
 
     #Check if the user is part of the Domain Admins or Enterprise Admins group, or any of their subgroups
-    def isDomainAdmin(self,username):
+    def isDomainAdmin(self, username):
         domainsid = self.getRootSid()
-        groups = self.getCurrentUserGroups(username,domainsid)
+        groups = self.getCurrentUserGroups(username, domainsid)
         #Get DA and EA group DNs
         dagroupdn = self.getDAGroupDN(domainsid)
         eagroupdn = self.getEAGroupDN(domainsid)
@@ -191,10 +193,10 @@ class domainDumper():
             if 'CN=Enterprise Admins' in group or (eagroupdn is not False and eagroupdn == group):
                 return True
         #Now, just do a recursive check in both groups and their subgroups using LDAP_MATCHING_RULE_IN_CHAIN
-        self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s)(memberOf:1.2.840.113556.1.4.1941:=%s))' % (username,dagroupdn),attributes=['sAMAccountName'])
+        self.connection.search(self.root, '(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s)(memberOf:1.2.840.113556.1.4.1941:=%s))' % (username, dagroupdn), attributes=['sAMAccountName'])
         if len(self.connection.entries) > 0:
             return True
-        self.connection.search(self.root,'(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s)(memberOf:1.2.840.113556.1.4.1941:=%s))' % (username,eagroupdn),attributes=['sAMAccountName'])
+        self.connection.search(self.root, '(&(objectCategory=person)(objectClass=user)(sAMAccountName=%s)(memberOf:1.2.840.113556.1.4.1941:=%s))' % (username, eagroupdn), attributes=['sAMAccountName'])
         if len(self.connection.entries) > 0:
             return True
         #At last, check the users primary group ID
@@ -202,76 +204,75 @@ class domainDumper():
 
     #Get all users
     def getAllUsers(self):
-        self.connection.extend.standard.paged_search('%s' % (self.root),'(&(objectCategory=person)(objectClass=user))',attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+        self.connection.extend.standard.paged_search('%s' % (self.root), '(&(objectCategory=person)(objectClass=user))', attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
     #Get all computers in the domain
     def getAllComputers(self):
-        self.connection.extend.standard.paged_search('%s' % (self.root),'(&(objectClass=computer)(objectClass=user))',attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+        self.connection.extend.standard.paged_search('%s' % (self.root), '(&(objectClass=computer)(objectClass=user))', attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
     #Get all user SPNs
     def getAllUserSpns(self):
-        self.connection.extend.standard.paged_search('%s' % (self.root),'(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))',attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+        self.connection.extend.standard.paged_search('%s' % (self.root), '(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))', attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
     #Get all defined groups
     def getAllGroups(self):
-        self.connection.extend.standard.paged_search(self.root,'(objectClass=group)',attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+        self.connection.extend.standard.paged_search(self.root, '(objectClass=group)', attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
     #Get the domain policies (such as lockout policy)
     def getDomainPolicy(self):
-        self.connection.search(self.root,'(objectClass=domain)',attributes=ldap3.ALL_ATTRIBUTES)
+        self.connection.search(self.root, '(objectClass=domain)', attributes=ldap3.ALL_ATTRIBUTES)
         return self.connection.entries
 
     #Get domain trusts
     def getTrusts(self):
-        self.connection.search(self.root,'(objectClass=trustedDomain)',attributes=ldap3.ALL_ATTRIBUTES)
+        self.connection.search(self.root, '(objectClass=trustedDomain)', attributes=ldap3.ALL_ATTRIBUTES)
         return self.connection.entries
 
     #Get all defined security groups
     #Syntax from:
     #https://ldapwiki.willeke.com/wiki/Active%20Directory%20Group%20Related%20Searches
     def getAllSecurityGroups(self):
-        self.connection.search(self.root,'(groupType:1.2.840.113556.1.4.803:=2147483648)',attributes=ldap3.ALL_ATTRIBUTES)
+        self.connection.search(self.root, '(groupType:1.2.840.113556.1.4.803:=2147483648)', attributes=ldap3.ALL_ATTRIBUTES)
         return self.connection.entries
 
     #Get the SID of the root object
     def getRootSid(self):
-        self.connection.search(self.root,'(objectClass=domain)',attributes=['objectSid'])
+        self.connection.search(self.root, '(objectClass=domain)', attributes=['objectSid'])
         try:
             sid = self.connection.entries[0].objectSid
-        except (LDAPAttributeError,LDAPCursorError,IndexError):
+        except (LDAPAttributeError, LDAPCursorError, IndexError):
             return False
         return sid
 
     #Get group members recursively using LDAP_MATCHING_RULE_IN_CHAIN (1.2.840.113556.1.4.1941)
-    def getRecursiveGroupmembers(self,groupdn):
-        self.connection.extend.standard.paged_search(self.root,'(&(objectCategory=person)(objectClass=user)(memberOf:1.2.840.113556.1.4.1941:=%s))' % groupdn,attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+    def getRecursiveGroupmembers(self, groupdn):
+        self.connection.extend.standard.paged_search(self.root, '(&(objectCategory=person)(objectClass=user)(memberOf:1.2.840.113556.1.4.1941:=%s))' % groupdn, attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
     #Resolve group ID to DN
-    def getGroupDNfromID(self,domainsid,gid):
-        self.connection.search(self.root,'(objectSid=%s-%d)' % (domainsid,gid),attributes=['distinguishedName'])
+    def getGroupDNfromID(self, domainsid, gid):
+        self.connection.search(self.root, '(objectSid=%s-%d)' % (domainsid, gid), attributes=['distinguishedName'])
         return self.connection.entries[0]['distinguishedName'].value
 
     #Get Domain Admins group DN
-    def getDAGroupDN(self,domainsid):
-        return self.getGroupDNfromID(domainsid,512)
+    def getDAGroupDN(self, domainsid):
+        return self.getGroupDNfromID(domainsid, 512)
 
     #Get Enterprise Admins group DN
-    def getEAGroupDN(self,domainsid):
+    def getEAGroupDN(self, domainsid):
         try:
-            return self.getGroupDNfromID(domainsid,519)
-        except (LDAPAttributeError,LDAPCursorError,IndexError):
+            return self.getGroupDNfromID(domainsid, 519)
+        except (LDAPAttributeError, LDAPCursorError, IndexError):
             #This does not exist, could be in a parent domain
             return False
 
 
     #Lookup all computer DNS names to get their IP
     def lookupComputerDnsNames(self):
-        ipmap = {}
         dnsresolver = dns.resolver.Resolver()
         dnsresolver.lifetime = 2
         ipdef = attrDef.AttrDef('ipv4')
@@ -285,7 +286,7 @@ class domainDumper():
                 ip = 'error.NXDOMAIN'
             except dns.resolver.Timeout:
                 ip = 'error.TIMEOUT'
-            except (LDAPAttributeError,LDAPCursorError):
+            except (LDAPAttributeError, LDAPCursorError):
                 ip = 'error.NOHOSTNAME'
             #Construct a custom attribute as workaround
             ipatt = attribute.Attribute(ipdef, computer, None)
@@ -296,12 +297,12 @@ class domainDumper():
             computer._state.attributes['IPv4'] = ipatt
 
     #Create a dictionary of all operating systems with the computer accounts that are associated
-    def sortComputersByOS(self,items):
+    def sortComputersByOS(self, items):
         osdict = {}
         for computer in items:
             try:
                 cos = computer.operatingSystem.value
-            except (LDAPAttributeError,LDAPCursorError):
+            except (LDAPAttributeError, LDAPCursorError):
                 cos = 'Unknown'
             try:
                 osdict[cos].append(computer)
@@ -327,27 +328,27 @@ class domainDumper():
         return gdict
 
     #Get CN from DN
-    def getGroupCnFromDn(self,dnin):
+    def getGroupCnFromDn(self, dnin):
         cn = self.unescapecn(dn.parse_dn(dnin)[0][1])
         return cn
 
     #Unescape special DN characters from a CN (only needed if it comes from a DN)
-    def unescapecn(self,cn):
+    def unescapecn(self, cn):
         for c in ' "#+,;<=>\\\00':
-            cn = cn.replace('\\'+c,c)
+            cn = cn.replace('\\'+c, c)
         return cn
 
     #Sort users by group they belong to
-    def sortUsersByGroup(self,items):
+    def sortUsersByGroup(self, items):
         groupsdict = {}
         #Make sure the group CN mapping already exists
         if self.groups_dnmap is None:
-            self.mapGroupsIdsToCns()
+            self.mapGroupsIdsToDns()
         for user in items:
             try:
                 ugroups = [self.getGroupCnFromDn(group) for group in user.memberOf.values]
             #If the user is only in the default group, its memberOf property wont exist
-            except (LDAPAttributeError,LDAPCursorError):
+            except (LDAPAttributeError, LDAPCursorError):
                 ugroups = []
             #Add the user default group
             ugroups.append(self.getGroupCnFromDn(self.groups_dnmap[user.primaryGroupId.value]))
@@ -368,7 +369,7 @@ class domainDumper():
                         #Group is not yet in dict
                         groupsdict[self.getGroupCnFromDn(parentgroup)] = [group]
             #Without subgroups this attribute does not exist
-            except (LDAPAttributeError,LDAPCursorError):
+            except (LDAPAttributeError, LDAPCursorError):
                 pass
 
         return groupsdict
@@ -391,47 +392,48 @@ class domainDumper():
         rw.generateComputersByOsReport(self)
         rw.generateUsersByGroupReport(self)
 
-class reportWriter():
-    def __init__(self,config):
+class reportWriter(object):
+    def __init__(self, config):
         self.config = config
+        self.dd = None
         if self.config.lookuphostnames:
-            self.computerattributes = ['cn','sAMAccountName','dNSHostName','IPv4','operatingSystem','operatingSystemServicePack','operatingSystemVersion','lastLogon','userAccountControl','whenCreated','objectSid','description']
+            self.computerattributes = ['cn', 'sAMAccountName', 'dNSHostName', 'IPv4', 'operatingSystem', 'operatingSystemServicePack', 'operatingSystemVersion', 'lastLogon', 'userAccountControl', 'whenCreated', 'objectSid', 'description']
         else:
-            self.computerattributes = ['cn','sAMAccountName','dNSHostName','operatingSystem','operatingSystemServicePack','operatingSystemVersion','lastLogon','userAccountControl','whenCreated','objectSid','description']
-        self.userattributes = ['cn','name','sAMAccountName','memberOf','primaryGroupId','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
+            self.computerattributes = ['cn', 'sAMAccountName', 'dNSHostName', 'operatingSystem', 'operatingSystemServicePack', 'operatingSystemVersion', 'lastLogon', 'userAccountControl', 'whenCreated', 'objectSid', 'description']
+        self.userattributes = ['cn', 'name', 'sAMAccountName', 'memberOf', 'primaryGroupId', 'whenCreated', 'whenChanged', 'lastLogon', 'userAccountControl', 'pwdLastSet', 'objectSid', 'description']
         #In grouped view, don't include the memberOf property to reduce output size
-        self.userattributes_grouped = ['cn','name','sAMAccountName','whenCreated','whenChanged','lastLogon','userAccountControl','pwdLastSet','objectSid','description']
-        self.groupattributes = ['cn','sAMAccountName','memberOf','description','whenCreated','whenChanged','objectSid']
-        self.policyattributes = ['cn','lockOutObservationWindow','lockoutDuration','lockoutThreshold','maxPwdAge','minPwdAge','minPwdLength','pwdHistoryLength','pwdProperties']
-        self.trustattributes = ['cn','flatName','securityIdentifier','trustAttributes','trustDirection','trustType']
+        self.userattributes_grouped = ['cn', 'name', 'sAMAccountName', 'whenCreated', 'whenChanged', 'lastLogon', 'userAccountControl', 'pwdLastSet', 'objectSid', 'description']
+        self.groupattributes = ['cn', 'sAMAccountName', 'memberOf', 'description', 'whenCreated', 'whenChanged', 'objectSid']
+        self.policyattributes = ['cn', 'lockOutObservationWindow', 'lockoutDuration', 'lockoutThreshold', 'maxPwdAge', 'minPwdAge', 'minPwdLength', 'pwdHistoryLength', 'pwdProperties']
+        self.trustattributes = ['cn', 'flatName', 'securityIdentifier', 'trustAttributes', 'trustDirection', 'trustType']
 
     #Escape HTML special chars
-    def htmlescape(self,html):
+    def htmlescape(self, html):
         return (html.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "&#39;").replace('"', "&quot;"))
 
     #Unescape special DN characters from a CN (only needed if it comes from a DN)
-    def unescapecn(self,cn):
+    def unescapecn(self, cn):
         for c in ' "#+,;<=>\\\00':
-            cn = cn.replace('\\'+c,c)
+            cn = cn.replace('\\'+c, c)
         return cn
 
     #Convert password max age (in 100 nanoseconds), to days
-    def nsToDays(self,length):
+    def nsToDays(self, length):
         return abs(length) * .0000001 / 86400
 
-    def nsToMinutes(self,length):
+    def nsToMinutes(self, length):
         return abs(length) * .0000001 / 60
 
     #Parse bitwise flags into a list
-    def parseFlags(self,attribute,flags_def):
+    def parseFlags(self, attr, flags_def):
         outflags = []
         for flag, val in flags_def.items():
-            if attribute.value & val:
+            if attr.value & val:
                 outflags.append(flag)
         return outflags
 
     #Generate a HTML table from a list of entries, with the specified attributes as column
-    def generateHtmlTable(self,listable,attributes,header='',firstTable=True,specialGroupsFormat=False):
+    def generateHtmlTable(self, listable, attributes, header='', firstTable=True, specialGroupsFormat=False):
         of = []
         #Only if this is the first table it is an actual table, the others are just bodies of the first table
         #This makes sure that multiple tables have their columns aligned to make it less messy
@@ -439,7 +441,7 @@ class reportWriter():
             of.append(u'<table>')
         #Table header
         if header != '':
-            of.append(u'<thead><tr><td colspan="%d" id="cn_%s">%s</td></tr></thead>' % (len(attributes),self.formatId(header),header))
+            of.append(u'<thead><tr><td colspan="%d" id="cn_%s">%s</td></tr></thead>' % (len(attributes), self.formatId(header), header))
         of.append(u'<tbody><tr>')
         for hdr in attributes:
             try:
@@ -459,7 +461,7 @@ class reportWriter():
                 of.append(u'<tr>')
             for att in attributes:
                 try:
-                    of.append(u'<td>%s</td>' % self.formatAttribute(li[att],liIsGroup))
+                    of.append(u'<td>%s</td>' % self.formatAttribute(li[att], liIsGroup))
                 except LDAPKeyError:
                     of.append(u'<td>&nbsp;</td>')
             of.append(u'</tr>\n')
@@ -467,24 +469,23 @@ class reportWriter():
         return u''.join(of)
 
     #Generate several HTML tables for grouped reports
-    def generateGroupedHtmlTables(self,groups,attributes):
-        ol = []
+    def generateGroupedHtmlTables(self, groups, attributes):
         first = True
         for groupname, members in groups.iteritems():
-            yield self.generateHtmlTable(members,attributes,groupname,first,specialGroupsFormat=True)
+            yield self.generateHtmlTable(members, attributes, groupname, first, specialGroupsFormat=True)
             if first:
                 first = False
 
     #Write generated HTML to file
-    def writeHtmlFile(self,rel_outfile,body,genfunc=None,genargs=None,closeTable=True):
+    def writeHtmlFile(self, rel_outfile, body, genfunc=None, genargs=None, closeTable=True):
         if not os.path.exists(self.config.basepath):
             os.makedirs(self.config.basepath)
-        outfile = os.path.join(self.config.basepath,rel_outfile)
-        with codecs.open(outfile,'w','utf8') as of:
+        outfile = os.path.join(self.config.basepath, rel_outfile)
+        with codecs.open(outfile, 'w', 'utf8') as of:
             of.write('<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8">')
             #Include the style
             try:
-                with open(os.path.join(os.path.dirname(__file__),'style.css'),'r') as sf:
+                with open(os.path.join(os.path.dirname(__file__), 'style.css'), 'r') as sf:
                     of.write('<style type="text/css">')
                     of.write(sf.read())
                     of.write('</style>')
@@ -503,11 +504,11 @@ class reportWriter():
             of.write('</body></html>')
 
     #Write generated JSON to file
-    def writeJsonFile(self,rel_outfile,jsondata,genfunc=None,genargs=None):
+    def writeJsonFile(self, rel_outfile, jsondata, genfunc=None, genargs=None):
         if not os.path.exists(self.config.basepath):
             os.makedirs(self.config.basepath)
-        outfile = os.path.join(self.config.basepath,rel_outfile)
-        with codecs.open(outfile,'w','utf8') as of:
+        outfile = os.path.join(self.config.basepath, rel_outfile)
+        with codecs.open(outfile, 'w', 'utf8') as of:
             #If the generator is not specified, we should write the JSON blob directly
             if genfunc is None:
                 of.write(jsondata)
@@ -516,15 +517,15 @@ class reportWriter():
                     of.write(jpart)
 
     #Write generated Greppable stuff to file
-    def writeGrepFile(self,rel_outfile,body):
+    def writeGrepFile(self, rel_outfile, body):
         if not os.path.exists(self.config.basepath):
             os.makedirs(self.config.basepath)
-        outfile = os.path.join(self.config.basepath,rel_outfile)
-        with codecs.open(outfile,'w','utf8') as of:
+        outfile = os.path.join(self.config.basepath, rel_outfile)
+        with codecs.open(outfile, 'w', 'utf8') as of:
             of.write(body)
 
     #Format a value for HTML
-    def formatString(self,value):
+    def formatString(self, value):
         if type(value) is datetime:
             try:
                 return value.strftime('%x %X')
@@ -541,11 +542,11 @@ class reportWriter():
         return value
 
     #Format an attribute to a human readable format
-    def formatAttribute(self,att,formatCnAsGroup=False):
+    def formatAttribute(self, att, formatCnAsGroup=False):
         aname = att.key.lower()
         #User flags
         if aname == 'useraccountcontrol':
-            return ', '.join(self.parseFlags(att,uac_flags))
+            return ', '.join(self.parseFlags(att, uac_flags))
         #List of groups
         if aname == 'member' or aname == 'memberof' and type(att.values) is list:
             return self.formatGroupsHtml(att.values)
@@ -554,17 +555,17 @@ class reportWriter():
             return self.formatGroupsHtml([self.dd.groups_dnmap[att.value]])
         #Pwd flags
         if aname == 'pwdproperties':
-            return ', '.join(self.parseFlags(att,pwd_flags))
+            return ', '.join(self.parseFlags(att, pwd_flags))
         #Domain trust flags
         if aname == 'trustattributes':
-            return ', '.join(self.parseFlags(att,trust_flags))
+            return ', '.join(self.parseFlags(att, trust_flags))
         if aname == 'trustdirection':
             if  att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseFlags(att,trust_directions))
+                return ', '.join(self.parseFlags(att, trust_directions))
         if aname == 'trusttype':
-            return ', '.join(self.parseFlags(att,trust_type))
+            return ', '.join(self.parseFlags(att, trust_type))
         if aname == 'securityidentifier':
             return format_sid(att.raw_values[0])
         if aname == 'minpwdage' or  aname == 'maxpwdage':
@@ -572,30 +573,30 @@ class reportWriter():
         if aname == 'lockoutobservationwindow' or  aname == 'lockoutduration':
             return '%.1f minutes' % self.nsToMinutes(att.value)
         if aname == 'objectsid':
-            return '<abbr title="%s">%s</abbr>' % (att.value,att.value.split('-')[-1])
+            return '<abbr title="%s">%s</abbr>' % (att.value, att.value.split('-')[-1])
         #Special case where the attribute is a CN and it should be made clear its a group
         if aname == 'cn' and formatCnAsGroup:
             return self.formatCnWithGroupLink(att.value)
         #Other
         return self.htmlescape(self.formatString(att.value))
 
-    def formatCnWithGroupLink(self,cn):
-        return u'Group: <a href="#cn_%s" title="%s">%s</a>' % (self.formatId(cn),self.htmlescape(cn),self.htmlescape(cn))
+    def formatCnWithGroupLink(self, cn):
+        return u'Group: <a href="#cn_%s" title="%s">%s</a>' % (self.formatId(cn), self.htmlescape(cn), self.htmlescape(cn))
 
     #Convert a CN to a valid HTML id by replacing all non-ascii characters with a _
-    def formatId(self,cn):
-        return re.sub('[^a-zA-Z0-9_\-]+','_',cn)
+    def formatId(self, cn):
+        return re.sub(r'[^a-zA-Z0-9_\-]+', '_', cn)
 
     #Format groups to readable HTML
-    def formatGroupsHtml(self,grouplist):
+    def formatGroupsHtml(self, grouplist):
         outcache = []
         for group in grouplist:
             cn = self.unescapecn(dn.parse_dn(group)[0][1])
-            outcache.append(u'<a href="%s.html#cn_%s" title="%s">%s</a>' % (self.config.users_by_group,quote_plus(self.formatId(cn)),self.htmlescape(group),self.htmlescape(cn)))
+            outcache.append(u'<a href="%s.html#cn_%s" title="%s">%s</a>' % (self.config.users_by_group, quote_plus(self.formatId(cn)), self.htmlescape(group), self.htmlescape(cn)))
         return ', '.join(outcache)
 
     #Format groups to readable HTML
-    def formatGroupsGrep(self,grouplist):
+    def formatGroupsGrep(self, grouplist):
         outcache = []
         for group in grouplist:
             cn = self.unescapecn(dn.parse_dn(group)[0][1])
@@ -603,11 +604,11 @@ class reportWriter():
         return ', '.join(outcache)
 
     #Format attribute for grepping
-    def formatGrepAttribute(self,att):
+    def formatGrepAttribute(self, att):
         aname = att.key.lower()
         #User flags
         if aname == 'useraccountcontrol':
-            return ', '.join(self.parseFlags(att,uac_flags))
+            return ', '.join(self.parseFlags(att, uac_flags))
         #List of groups
         if aname == 'member' or aname == 'memberof' and type(att.values) is list:
             return self.formatGroupsGrep(att.values)
@@ -615,19 +616,19 @@ class reportWriter():
             return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
         #Domain trust flags
         if aname == 'trustattributes':
-            return ', '.join(self.parseFlags(att,trust_flags))
+            return ', '.join(self.parseFlags(att, trust_flags))
         if aname == 'trustdirection':
             if att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseFlags(att,trust_directions))
+                return ', '.join(self.parseFlags(att, trust_directions))
         if aname == 'trusttype':
-            return ', '.join(self.parseFlags(att,trust_type))
+            return ', '.join(self.parseFlags(att, trust_type))
         if aname == 'securityidentifier':
             return format_sid(att.raw_values[0])
         #Pwd flags
         if aname == 'pwdproperties':
-            return ', '.join(self.parseFlags(att,pwd_flags))
+            return ', '.join(self.parseFlags(att, pwd_flags))
         if aname == 'minpwdage' or  aname == 'maxpwdage':
             return '%.2f days' % self.nsToDays(att.value)
         if aname == 'lockoutobservationwindow' or  aname == 'lockoutduration':
@@ -635,7 +636,7 @@ class reportWriter():
         return self.formatString(att.value)
 
     #Generate grep/awk/cut-able output
-    def generateGrepList(self,entrylist,attributes):
+    def generateGrepList(self, entrylist, attributes):
         hdr = self.config.grepsplitchar.join(attributes)
         out = [hdr]
         for entry in entrylist:
@@ -651,20 +652,20 @@ class reportWriter():
     #Convert a list of entities to a JSON string
     #String concatenation is used here since the entities have their own json generate
     #method and converting the string back to json just to process it would be inefficient
-    def generateJsonList(self,entrylist):
+    def generateJsonList(self, entrylist):
         out = '[' + ','.join([entry.entry_to_json() for entry in entrylist]) + ']'
         return out
 
     #Convert a group key/value pair to json
     #Same methods as previous function are used
-    def generateJsonGroup(self,group):
-        out = '{%s:%s}' % (json.dumps(group[0]),self.generateJsonList(group[1]))
+    def generateJsonGroup(self, group):
+        out = '{%s:%s}' % (json.dumps(group[0]), self.generateJsonList(group[1]))
         return out
 
     #Convert a list of group dicts with entry lists to JSON string
     #Same methods as previous functions are used, except that text is returned
     #from a generator rather than allocating everything in memory
-    def generateJsonGroupedList(self,groups):
+    def generateJsonGroupedList(self, groups):
         #Start of the list
         yield '['
         firstGroup = True
@@ -678,85 +679,85 @@ class reportWriter():
         yield ']'
 
     #Generate report of all computers grouped by OS family
-    def generateComputersByOsReport(self,dd):
+    def generateComputersByOsReport(self, dd):
         grouped = dd.sortComputersByOS(dd.computers)
         if self.config.outputhtml:
             #Use the generator approach to save memory
-            self.writeHtmlFile('%s.html' % self.config.computers_by_os,None,genfunc=self.generateGroupedHtmlTables,genargs=(grouped,self.computerattributes))
+            self.writeHtmlFile('%s.html' % self.config.computers_by_os, None, genfunc=self.generateGroupedHtmlTables, genargs=(grouped, self.computerattributes))
         if self.config.outputjson and self.config.groupedjson:
-            self.writeJsonFile('%s.json' % self.config.computers_by_os,None,genfunc=self.generateJsonGroupedList,genargs=(grouped,))
+            self.writeJsonFile('%s.json' % self.config.computers_by_os, None, genfunc=self.generateJsonGroupedList, genargs=(grouped, ))
 
     #Generate report of all groups and detailled user info
-    def generateUsersByGroupReport(self,dd):
+    def generateUsersByGroupReport(self, dd):
         grouped = dd.sortUsersByGroup(dd.users)
         if self.config.outputhtml:
             #Use the generator approach to save memory
-            self.writeHtmlFile('%s.html' % self.config.users_by_group,None,genfunc=self.generateGroupedHtmlTables,genargs=(grouped,self.userattributes_grouped))
+            self.writeHtmlFile('%s.html' % self.config.users_by_group, None, genfunc=self.generateGroupedHtmlTables, genargs=(grouped, self.userattributes_grouped))
         if self.config.outputjson and self.config.groupedjson:
-            self.writeJsonFile('%s.json' % self.config.users_by_group,None,genfunc=self.generateJsonGroupedList,genargs=(grouped,))
+            self.writeJsonFile('%s.json' % self.config.users_by_group, None, genfunc=self.generateJsonGroupedList, genargs=(grouped, ))
 
     #Generate report with just a table of all users
-    def generateUsersReport(self,dd):
+    def generateUsersReport(self, dd):
         #Copy dd to this object, to be able to reference it
         self.dd = dd
         dd.mapGroupsIdsToDns()
         if self.config.outputhtml:
-            html = self.generateHtmlTable(dd.users,self.userattributes,'Domain users')
-            self.writeHtmlFile('%s.html' % self.config.usersfile,html)
+            html = self.generateHtmlTable(dd.users, self.userattributes, 'Domain users')
+            self.writeHtmlFile('%s.html' % self.config.usersfile, html)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.users)
-            self.writeJsonFile('%s.json' % self.config.usersfile,jsonout)
+            self.writeJsonFile('%s.json' % self.config.usersfile, jsonout)
         if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.users,self.userattributes)
-            self.writeGrepFile('%s.grep' % self.config.usersfile,grepout)
+            grepout = self.generateGrepList(dd.users, self.userattributes)
+            self.writeGrepFile('%s.grep' % self.config.usersfile, grepout)
 
     #Generate report with just a table of all computer accounts
-    def generateComputersReport(self,dd):
+    def generateComputersReport(self, dd):
         if self.config.outputhtml:
-            html = self.generateHtmlTable(dd.computers,self.computerattributes,'Domain computer accounts')
-            self.writeHtmlFile('%s.html' % self.config.computersfile,html)
+            html = self.generateHtmlTable(dd.computers, self.computerattributes, 'Domain computer accounts')
+            self.writeHtmlFile('%s.html' % self.config.computersfile, html)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.computers)
-            self.writeJsonFile('%s.json' % self.config.computersfile,jsonout)
+            self.writeJsonFile('%s.json' % self.config.computersfile, jsonout)
         if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.computers,self.computerattributes)
-            self.writeGrepFile('%s.grep' % self.config.computersfile,grepout)
+            grepout = self.generateGrepList(dd.computers, self.computerattributes)
+            self.writeGrepFile('%s.grep' % self.config.computersfile, grepout)
 
     #Generate report with just a table of all computer accounts
-    def generateGroupsReport(self,dd):
+    def generateGroupsReport(self, dd):
         if self.config.outputhtml:
-            html = self.generateHtmlTable(dd.groups,self.groupattributes,'Domain groups')
-            self.writeHtmlFile('%s.html' % self.config.groupsfile,html)
+            html = self.generateHtmlTable(dd.groups, self.groupattributes, 'Domain groups')
+            self.writeHtmlFile('%s.html' % self.config.groupsfile, html)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.groups)
-            self.writeJsonFile('%s.json' % self.config.groupsfile,jsonout)
+            self.writeJsonFile('%s.json' % self.config.groupsfile, jsonout)
         if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.groups,self.groupattributes)
-            self.writeGrepFile('%s.grep' % self.config.groupsfile,grepout)
+            grepout = self.generateGrepList(dd.groups, self.groupattributes)
+            self.writeGrepFile('%s.grep' % self.config.groupsfile, grepout)
 
     #Generate policy report
-    def generatePolicyReport(self,dd):
+    def generatePolicyReport(self, dd):
         if self.config.outputhtml:
-            html = self.generateHtmlTable(dd.policy,self.policyattributes,'Domain policy')
-            self.writeHtmlFile('%s.html' % self.config.policyfile,html)
+            html = self.generateHtmlTable(dd.policy, self.policyattributes, 'Domain policy')
+            self.writeHtmlFile('%s.html' % self.config.policyfile, html)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.policy)
-            self.writeJsonFile('%s.json' % self.config.policyfile,jsonout)
+            self.writeJsonFile('%s.json' % self.config.policyfile, jsonout)
         if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.policy,self.policyattributes)
-            self.writeGrepFile('%s.grep' % self.config.policyfile,grepout)
+            grepout = self.generateGrepList(dd.policy, self.policyattributes)
+            self.writeGrepFile('%s.grep' % self.config.policyfile, grepout)
 
     #Generate policy report
-    def generateTrustsReport(self,dd):
+    def generateTrustsReport(self, dd):
         if self.config.outputhtml:
-            html = self.generateHtmlTable(dd.trusts,self.trustattributes,'Domain trusts')
-            self.writeHtmlFile('%s.html' % self.config.trustsfile,html)
+            html = self.generateHtmlTable(dd.trusts, self.trustattributes, 'Domain trusts')
+            self.writeHtmlFile('%s.html' % self.config.trustsfile, html)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.trusts)
-            self.writeJsonFile('%s.json' % self.config.trustsfile,jsonout)
+            self.writeJsonFile('%s.json' % self.config.trustsfile, jsonout)
         if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.trusts,self.trustattributes)
-            self.writeGrepFile('%s.grep' % self.config.trustsfile,grepout)
+            grepout = self.generateGrepList(dd.trusts, self.trustattributes)
+            self.writeGrepFile('%s.grep' % self.config.trustsfile, grepout)
 
 #Some quick logging helpers
 def log_warn(text):
@@ -773,24 +774,24 @@ def main():
 
     #Main parameters
     #maingroup = parser.add_argument_group("Main options")
-    parser.add_argument("host", type=str,metavar='HOSTNAME',help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
-    parser.add_argument("-u","--user",type=str,metavar='USERNAME',help="DOMAIN\username for authentication, leave empty for anonymous authentication")
-    parser.add_argument("-p","--password",type=str,metavar='PASSWORD',help="Password or LM:NTLM hash, will prompt if not specified")
-    parser.add_argument("-at","--authtype",type=str,choices=['NTLM','SIMPLE'],default='NTLM',help="Authentication type (NTLM or SIMPLE, default: NTLM)")
+    parser.add_argument("host", type=str, metavar='HOSTNAME', help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
+    parser.add_argument("-u", "--user", type=str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
+    parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
+    parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
 
     #Output parameters
     outputgroup = parser.add_argument_group("Output options")
-    outputgroup.add_argument("-o","--outdir",type=str,metavar='DIRECTORY',help="Directory in which the dump will be saved (default: current)")
-    outputgroup.add_argument("--no-html", action='store_true',help="Disable HTML output")
-    outputgroup.add_argument("--no-json", action='store_true',help="Disable JSON output")
-    outputgroup.add_argument("--no-grep", action='store_true',help="Disable Greppable output")
+    outputgroup.add_argument("-o", "--outdir", type=str, metavar='DIRECTORY', help="Directory in which the dump will be saved (default: current)")
+    outputgroup.add_argument("--no-html", action='store_true', help="Disable HTML output")
+    outputgroup.add_argument("--no-json", action='store_true', help="Disable JSON output")
+    outputgroup.add_argument("--no-grep", action='store_true', help="Disable Greppable output")
     outputgroup.add_argument("--grouped-json", action='store_true', default=False, help="Also write json files for grouped files (default: disabled)")
-    outputgroup.add_argument("-d","--delimiter",help="Field delimiter for greppable output (default: tab)")
+    outputgroup.add_argument("-d", "--delimiter", help="Field delimiter for greppable output (default: tab)")
 
     #Additional options
     miscgroup = parser.add_argument_group("Misc options")
-    miscgroup.add_argument("-r", "--resolve", action='store_true',help="Resolve computer hostnames (might take a while and cause high traffic on large networks)")
-    miscgroup.add_argument("-n", "--dns-server",help="Use custom DNS resolver instead of system DNS (try a domain controller IP)")
+    miscgroup.add_argument("-r", "--resolve", action='store_true', help="Resolve computer hostnames (might take a while and cause high traffic on large networks)")
+    miscgroup.add_argument("-n", "--dns-server", help="Use custom DNS resolver instead of system DNS (try a domain controller IP)")
 
     args = parser.parse_args()
     #Create default config
@@ -827,7 +828,7 @@ def main():
         else:
             authentication = NTLM
         if not '\\' in args.user:
-            log_warn('Username must include a domain, use: DOMAIN\username')
+            log_warn('Username must include a domain, use: DOMAIN\\username')
             sys.exit(1)
         if args.password is None:
             args.password = getpass.getpass()
@@ -846,7 +847,7 @@ def main():
     log_success('Bind OK')
     log_info('Starting domain dump')
     #Create domaindumper object
-    dd = domainDumper(s,c,cnf)
+    dd = domainDumper(s, c, cnf)
 
     #Do the actual dumping
     dd.domainDump()
