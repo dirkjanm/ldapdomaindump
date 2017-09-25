@@ -462,7 +462,7 @@ class reportWriter(object):
             for att in attributes:
                 try:
                     of.append(u'<td>%s</td>' % self.formatAttribute(li[att], liIsGroup))
-                except LDAPKeyError:
+                except (LDAPKeyError, LDAPCursorError):
                     of.append(u'<td>&nbsp;</td>')
             of.append(u'</tr>\n')
         of.append(u'</tbody>\n')
@@ -644,7 +644,7 @@ class reportWriter(object):
             for attr in attributes:
                 try:
                     eo.append(self.formatGrepAttribute(entry[attr]))
-                except LDAPKeyError:
+                except (LDAPKeyError, LDAPCursorError):
                     eo.append('')
             out.append(self.config.grepsplitchar.join(eo))
         return '\n'.join(out)
