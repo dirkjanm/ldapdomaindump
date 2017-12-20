@@ -432,6 +432,14 @@ class reportWriter(object):
                 outflags.append(flag)
         return outflags
 
+    #Parse bitwise trust direction - only one flag applies here, 0x03 overlaps
+    def parseTrustDirection(self, attr, flags_def):
+        outflags = []
+        for flag, val in flags_def.items():
+            if attr.value == val:
+                outflags.append(flag)
+        return outflags
+
     #Generate a HTML table from a list of entries, with the specified attributes as column
     def generateHtmlTable(self, listable, attributes, header='', firstTable=True, specialGroupsFormat=False):
         of = []
@@ -558,7 +566,7 @@ class reportWriter(object):
             return ', '.join(self.parseFlags(att, pwd_flags))
         #Domain trust flags
         if aname == 'trustattributes':
-            return ', '.join(self.parseFlags(att, trust_flags))
+            return ', '.join(self.parseTrustDirection(att, trust_flags))
         if aname == 'trustdirection':
             if  att.value == 0:
                 return 'DISABLED'
@@ -616,7 +624,7 @@ class reportWriter(object):
             return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
         #Domain trust flags
         if aname == 'trustattributes':
-            return ', '.join(self.parseFlags(att, trust_flags))
+            return ', '.join(self.parseTrustDirection(att, trust_flags))
         if aname == 'trustdirection':
             if att.value == 0:
                 return 'DISABLED'
