@@ -566,12 +566,12 @@ class reportWriter(object):
             return ', '.join(self.parseFlags(att, pwd_flags))
         #Domain trust flags
         if aname == 'trustattributes':
-            return ', '.join(self.parseTrustDirection(att, trust_flags))
+            return ', '.join(self.parseFlags(att, trust_flags))
         if aname == 'trustdirection':
             if  att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseFlags(att, trust_directions))
+                return ', '.join(self.parseTrustDirection(att, trust_directions))
         if aname == 'trusttype':
             return ', '.join(self.parseFlags(att, trust_type))
         if aname == 'securityidentifier':
@@ -624,12 +624,12 @@ class reportWriter(object):
             return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
         #Domain trust flags
         if aname == 'trustattributes':
-            return ', '.join(self.parseTrustDirection(att, trust_flags))
+            return ', '.join(self.parseFlags(att, trust_flags))
         if aname == 'trustdirection':
             if att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseFlags(att, trust_directions))
+                return ', '.join(self.parseTrustDirection(att, trust_directions))
         if aname == 'trusttype':
             return ', '.join(self.parseFlags(att, trust_type))
         if aname == 'securityidentifier':
