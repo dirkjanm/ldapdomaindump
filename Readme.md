@@ -92,5 +92,9 @@ By default the tool outputs all files in HTML, JSON and tab delimited output (gr
 An important option is the *-r* option, which decides if a computers DNSHostName attribute should be resolved to an IPv4 address. 
 While this can be very useful, the DNSHostName attribute is not automatically updated. When the AD Domain uses subdomains for computer hostnames, the DNSHostName will often be incorrect and will not resolve. Also keep in mind that resolving every hostname in the domain might cause a high load on the domain controller.
 
+## Visualizing groups with BloodHound
+LDAPDomainDump includes a utility that can be used to convert ldapdomaindumps `.json` files to CSV files suitable for BloodHound. The utility is called `ldd2bloodhound` and is added to your path upon installation. Alternatively you can run it with `python -m ldapdomaindump.convert` or with `python ldapdomaindump/convert.py` if you are running it from the source.
+The conversion tool will take the users/groups/computers/trusts `.json` file and convert those to `group_membership.csv` and `trust.csv` which you can add to BloodHound.
+
 ## License
 MIT
