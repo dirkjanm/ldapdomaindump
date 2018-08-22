@@ -49,7 +49,13 @@ uac_flags = {'ACCOUNT_DISABLED':0x00000002,
              'SERVER_TRUST_ACCOUNT': 0x00002000,
              'DONT_EXPIRE_PASSWD': 0x00010000,
              'SMARTCARD_REQUIRED': 0x00040000,
-             'PASSWORD_EXPIRED': 0x00800000
+             'TRUSTED_FOR_DELEGATION': 0x00080000,
+             'NOT_DELEGATED': 0x00100000,
+             'USE_DES_KEY_ONLY': 0x00200000,
+             'DONT_REQ_PREAUTH': 0x00400000,
+             'PASSWORD_EXPIRED': 0x00800000,
+             'TRUSTED_TO_AUTH_FOR_DELEGATION': 0x01000000,
+             'PARTIAL_SECRETS_ACCOUNT': 0x04000000
             }
 
 # Password policy flags
