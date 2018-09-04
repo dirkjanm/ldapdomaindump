@@ -42,6 +42,7 @@ Help can be obtained with the -h switch:
 usage: ldapdomaindump.py [-h] [-u USERNAME] [-p PASSWORD] [-at {NTLM,SIMPLE}]
                          [-o DIRECTORY] [--no-html] [--no-json] [--no-grep]
                          [--grouped-json] [-d DELIMITER] [-r] [-n DNS_SERVER]
+                         [-m]
                          HOSTNAME
 
 Domain information dumper via LDAP. Dumps users/computers/groups and
@@ -79,6 +80,8 @@ Misc options:
   -n DNS_SERVER, --dns-server DNS_SERVER
                         Use custom DNS resolver instead of system DNS (try a
                         domain controller IP)
+  -m, --minimal         Only query minimal set of attributes to limit memmory
+                        usage
 ```
 
 ## Options
@@ -91,6 +94,9 @@ By default the tool outputs all files in HTML, JSON and tab delimited output (gr
 ### DNS resolving
 An important option is the *-r* option, which decides if a computers DNSHostName attribute should be resolved to an IPv4 address. 
 While this can be very useful, the DNSHostName attribute is not automatically updated. When the AD Domain uses subdomains for computer hostnames, the DNSHostName will often be incorrect and will not resolve. Also keep in mind that resolving every hostname in the domain might cause a high load on the domain controller.
+
+### Minimizing network and memory usage
+By default ldapdomaindump will try to dump every single attribute it can read to disk in the .json files. In large networks, this uses a lot of memory (since group relationships are currently calculated in memory before being written to disk). To dump only the minimal required attributes (the ones shown by default in the .html and .grep files), use the `--minimal` switch.
 
 ## Visualizing groups with BloodHound
 LDAPDomainDump includes a utility that can be used to convert ldapdomaindumps `.json` files to CSV files suitable for BloodHound. The utility is called `ldd2bloodhound` and is added to your path upon installation. Alternatively you can run it with `python -m ldapdomaindump.convert` or with `python ldapdomaindump/convert.py` if you are running it from the source.
