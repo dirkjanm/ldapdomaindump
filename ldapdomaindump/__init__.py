@@ -112,7 +112,7 @@ attr_translations = {'sAMAccountName':'SAM Name',
 
 MINIMAL_COMPUTERATTRIBUTES = ['cn', 'sAMAccountName', 'dNSHostName', 'operatingSystem', 'operatingSystemServicePack', 'operatingSystemVersion', 'lastLogon', 'userAccountControl', 'whenCreated', 'objectSid', 'description', 'objectClass']
 MINIMAL_USERATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'primaryGroupId', 'whenCreated', 'whenChanged', 'lastLogon', 'userAccountControl', 'pwdLastSet', 'objectSid', 'description', 'objectClass']
-MINIMAL_GROUPATTRIBUTES = ['cn', 'sAMAccountName', 'memberOf', 'description', 'whenCreated', 'whenChanged', 'objectSid', 'distinguishedName', 'objectClass']
+MINIMAL_GROUPATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'description', 'whenCreated', 'whenChanged', 'objectSid', 'distinguishedName', 'objectClass']
 
 #Class containing the default config
 class domainDumpConfig(object):
@@ -234,7 +234,7 @@ class domainDumper(object):
         if self.config.minimal:
             self.connection.extend.standard.paged_search('%s' % (self.root), '(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))', attributes=MINIMAL_USERATTRIBUTES, paged_size=500, generator=False)
         else:
-            self.connection.extend.standard.paged_search('%s' % (self.root), '(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))', attributes=dap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
+            self.connection.extend.standard.paged_search('%s' % (self.root), '(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))', attributes=ldap3.ALL_ATTRIBUTES, paged_size=500, generator=False)
         return self.connection.entries
 
     #Get all defined groups
@@ -450,6 +450,8 @@ class reportWriter(object):
     #Parse bitwise flags into a list
     def parseFlags(self, attr, flags_def):
         outflags = []
+        if attr is None:
+            return outflags
         for flag, val in flags_def.items():
             if attr.value & val:
                 outflags.append(flag)
@@ -458,6 +460,8 @@ class reportWriter(object):
     #Parse bitwise trust direction - only one flag applies here, 0x03 overlaps
     def parseTrustDirection(self, attr, flags_def):
         outflags = []
+        if attr is None:
+            return outflags
         for flag, val in flags_def.items():
             if attr.value == val:
                 outflags.append(flag)
