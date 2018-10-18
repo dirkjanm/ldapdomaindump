@@ -21,18 +21,22 @@
 # SOFTWARE.
 #
 ####################
-
+from __future__ import unicode_literals
 import sys, os, re, codecs, json, argparse, getpass, base64
 # import class and constants
 from datetime import datetime
-from urllib import quote_plus
-
+try:
+    from urllib.parse import quote_plus
+except ImportError:
+    from urllib import quote_plus
 import ldap3
 from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
 from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
 from ldap3.protocol.formatters.formatters import format_sid
+from builtins import str
+from future.utils import itervalues, iteritems, native_str
 
 # dnspython, for resolving hostnames
 import dns.resolver
@@ -452,7 +456,7 @@ class reportWriter(object):
         outflags = []
         if attr is None:
             return outflags
-        for flag, val in flags_def.items():
+        for flag, val in iteritems(flags_def):
             if attr.value & val:
                 outflags.append(flag)
         return outflags
@@ -462,7 +466,7 @@ class reportWriter(object):
         outflags = []
         if attr is None:
             return outflags
-        for flag, val in flags_def.items():
+        for flag, val in iteritems(flags_def):
             if attr.value == val:
                 outflags.append(flag)
         return outflags
@@ -473,40 +477,40 @@ class reportWriter(object):
         #Only if this is the first table it is an actual table, the others are just bodies of the first table
         #This makes sure that multiple tables have their columns aligned to make it less messy
         if firstTable:
-            of.append(u'<table>')
+            of.append('<table>')
         #Table header
         if header != '':
-            of.append(u'<thead><tr><td colspan="%d" id="cn_%s">%s</td></tr></thead>' % (len(attributes), self.formatId(header), header))
-        of.append(u'<tbody><tr>')
+            of.append('<thead><tr><td colspan="%d" id="cn_%s">%s</td></tr></thead>' % (len(attributes), self.formatId(header), header))
+        of.append('<tbody><tr>')
         for hdr in attributes:
             try:
                 #Print alias of this attribute if there is one
-                of.append(u'<th>%s</th>' % self.htmlescape(attr_translations[hdr]))
+                of.append('<th>%s</th>' % self.htmlescape(attr_translations[hdr]))
             except KeyError:
-                of.append(u'<th>%s</th>' % self.htmlescape(hdr))
-        of.append(u'</tr>\n')
+                of.append('<th>%s</th>' % self.htmlescape(hdr))
+        of.append('</tr>\n')
         for li in listable:
             #Whether we should format group objects separately
             if specialGroupsFormat and 'group' in li['objectClass'].values:
                 #Give it an extra class and pass it to the function below to make sure the CN is a link
                 liIsGroup = True
-                of.append(u'<tr class="group">')
+                of.append('<tr class="group">')
             else:
                 liIsGroup = False
-                of.append(u'<tr>')
+                of.append('<tr>')
             for att in attributes:
                 try:
-                    of.append(u'<td>%s</td>' % self.formatAttribute(li[att], liIsGroup))
+                    of.append('<td>%s</td>' % self.formatAttribute(li[att], liIsGroup))
                 except (LDAPKeyError, LDAPCursorError):
-                    of.append(u'<td>&nbsp;</td>')
-            of.append(u'</tr>\n')
-        of.append(u'</tbody>\n')
-        return u''.join(of)
+                    of.append('<td>&nbsp;</td>')
+            of.append('</tr>\n')
+        of.append('</tbody>\n')
+        return ''.join(of)
 
     #Generate several HTML tables for grouped reports
     def generateGroupedHtmlTables(self, groups, attributes):
         first = True
-        for groupname, members in groups.iteritems():
+        for groupname, members in iteritems(groups):
             yield self.generateHtmlTable(members, attributes, groupname, first, specialGroupsFormat=True)
             if first:
                 first = False
@@ -566,13 +570,14 @@ class reportWriter(object):
                 return value.strftime('%x %X')
             except ValueError:
                 #Invalid date
-                return u'0'
-        if type(value) is unicode:
-            return value#.encode('utf8')
+                return '0'
+        # Make sure it's a unicode string
+        if type(value) is bytes:
+            return value.encode('utf8')
         if type(value) is str:
-            return unicode(value, errors='replace')#.encode('utf8')
+            return value#.encode('utf8')
         if type(value) is int:
-            return unicode(value)
+            return str(value)
         if value is None:
             return ''
         #Other type: just return it
@@ -619,7 +624,7 @@ class reportWriter(object):
 
 
     def formatCnWithGroupLink(self, cn):
-        return u'Group: <a href="#cn_%s" title="%s">%s</a>' % (self.formatId(cn), self.htmlescape(cn), self.htmlescape(cn))
+        return 'Group: <a href="#cn_%s" title="%s">%s</a>' % (self.formatId(cn), self.htmlescape(cn), self.htmlescape(cn))
 
     #Convert a CN to a valid HTML id by replacing all non-ascii characters with a _
     def formatId(self, cn):
@@ -630,7 +635,7 @@ class reportWriter(object):
         outcache = []
         for group in grouplist:
             cn = self.unescapecn(dn.parse_dn(group)[0][1])
-            outcache.append(u'<a href="%s.html#cn_%s" title="%s">%s</a>' % (self.config.users_by_group, quote_plus(self.formatId(cn)), self.htmlescape(group), self.htmlescape(cn)))
+            outcache.append('<a href="%s.html#cn_%s" title="%s">%s</a>' % (self.config.users_by_group, quote_plus(self.formatId(cn)), self.htmlescape(group), self.htmlescape(cn)))
         return ', '.join(outcache)
 
     #Format groups to readable HTML
@@ -707,7 +712,7 @@ class reportWriter(object):
         #Start of the list
         yield '['
         firstGroup = True
-        for group in groups.iteritems():
+        for group in iteritems(groups):
             if not firstGroup:
                 #Separate items
                 yield ','
@@ -799,11 +804,11 @@ class reportWriter(object):
 
 #Some quick logging helpers
 def log_warn(text):
-    print '[!] %s' % text
+    print('[!] %s' % text)
 def log_info(text):
-    print '[*] %s' % text
+    print('[*] %s' % text)
 def log_success(text):
-    print '[+] %s' % text
+    print('[+] %s' % text)
 
 def main():
     parser = argparse.ArgumentParser(description='Domain information dumper via LDAP. Dumps users/computers/groups and OS/membership information to HTML/JSON/greppable output.')
@@ -813,8 +818,8 @@ def main():
     #Main parameters
     #maingroup = parser.add_argument_group("Main options")
     parser.add_argument("host", type=str, metavar='HOSTNAME', help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
-    parser.add_argument("-u", "--user", type=str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
-    parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
+    parser.add_argument("-u", "--user", type=native_str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
+    parser.add_argument("-p", "--password", type=native_str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
     parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
 
     #Output parameters
@@ -879,6 +884,7 @@ def main():
     # define the server and the connection
     s = Server(args.host, get_info=ALL)
     log_info('Connecting to host...')
+
     c = Connection(s, user=args.user, password=args.password, authentication=authentication)
     log_info('Binding to host')
     # perform the Bind operation

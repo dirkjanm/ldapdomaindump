@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 import argparse
 import os
 import logging
@@ -5,6 +6,7 @@ import json
 import codecs
 import re
 from ldapdomaindump import trust_flags, trust_directions
+from builtins import str, itervalues, iteritems
 
 logging.basicConfig()
 logger = logging.getLogger('ldd2bloodhound')
@@ -84,7 +86,7 @@ class BloodHoundConverter(object):
         # Read group mapping - write to csv
         # file is already created here, we just append
         with codecs.open('group_membership.csv', 'a', 'utf-8') as outfile:
-            for group in self.groups_by_dn.itervalues():
+            for group in itervalues(self.groups_by_dn):
                 for membergroup in group['memberOf']:
                     try:
                         outfile.write('%s,%s,%s\n' % (self.groups_by_dn[membergroup]['principal'], group['principal'], 'group'))
