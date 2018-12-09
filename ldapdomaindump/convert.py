@@ -6,7 +6,8 @@ import json
 import codecs
 import re
 from ldapdomaindump import trust_flags, trust_directions
-from builtins import str, itervalues, iteritems
+from builtins import str
+from future.utils import itervalues, iteritems
 
 logging.basicConfig()
 logger = logging.getLogger('ldd2bloodhound')
