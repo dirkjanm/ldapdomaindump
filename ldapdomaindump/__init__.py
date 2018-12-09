@@ -31,7 +31,7 @@ except ImportError:
     from urllib import quote_plus
 import ldap3
 from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
-from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError
+from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError, LDAPInvalidDnError
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
 from ldap3.protocol.formatters.formatters import format_sid
@@ -630,11 +630,28 @@ class reportWriter(object):
     def formatId(self, cn):
         return re.sub(r'[^a-zA-Z0-9_\-]+', '_', cn)
 
+    # Fallback function for dirty DN parsing in case ldap3 functions error out
+    def parseDnFallback(self, dn):
+        try:
+            indcn = dn[3:].index(',CN=')
+            indou = dn[3:].index(',OU=')
+            if indcn < indou:
+                cn = dn[3:].split(',CN=')[0]
+            else:
+                cn = dn[3:].split(',OU=')[0]
+        except ValueError:
+            cn = dn
+        return cn
+
     #Format groups to readable HTML
     def formatGroupsHtml(self, grouplist):
         outcache = []
         for group in grouplist:
-            cn = self.unescapecn(dn.parse_dn(group)[0][1])
+            try:
+                cn = self.unescapecn(dn.parse_dn(group)[0][1])
+            except LDAPInvalidDnError:
+                # Parsing failed, do it manually
+                cn = self.unescapecn(self.parseDnFallback(group))
             outcache.append('<a href="%s.html#cn_%s" title="%s">%s</a>' % (self.config.users_by_group, quote_plus(self.formatId(cn)), self.htmlescape(group), self.htmlescape(cn)))
         return ', '.join(outcache)
 
@@ -642,7 +659,11 @@ class reportWriter(object):
     def formatGroupsGrep(self, grouplist):
         outcache = []
         for group in grouplist:
-            cn = self.unescapecn(dn.parse_dn(group)[0][1])
+            try:
+                cn = self.unescapecn(dn.parse_dn(group)[0][1])
+            except LDAPInvalidDnError:
+                # Parsing failed, do it manually
+                cn = self.unescapecn(self.parseDnFallback(group))
             outcache.append(cn)
         return ', '.join(outcache)
 
