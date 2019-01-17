@@ -454,10 +454,10 @@ class reportWriter(object):
     #Parse bitwise flags into a list
     def parseFlags(self, attr, flags_def):
         outflags = []
-        if attr is None:
+        if attr is None or attr.value is None:
             return outflags
         for flag, val in iteritems(flags_def):
-            if attr.value != None and attr.value & val:
+            if attr.value & val:
                 outflags.append(flag)
         return outflags
 
