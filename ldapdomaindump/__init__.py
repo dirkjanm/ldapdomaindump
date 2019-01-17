@@ -457,7 +457,7 @@ class reportWriter(object):
         if attr is None:
             return outflags
         for flag, val in iteritems(flags_def):
-            if attr.value & val:
+            if attr.value != None and attr.value & val:
                 outflags.append(flag)
         return outflags
 
