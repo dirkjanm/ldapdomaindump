@@ -112,7 +112,11 @@ attr_translations = {'sAMAccountName':'SAM Name',
                      'lockoutThreshold':'Lockout Threshold',
                      'maxPwdAge':'Max password age',
                      'minPwdAge':'Min password age',
-                     'minPwdLength':'Min password length'}
+                     'minPwdLength':'Min password length',
+                     'pwdHistoryLength':'Password history length',
+                     'pwdProperties':'Password properties',
+                     'ms-DS-MachineAccountQuota':'Machine Account Quota',
+                     'flatName':'NETBIOS Domain name'}
 
 MINIMAL_COMPUTERATTRIBUTES = ['cn', 'sAMAccountName', 'dNSHostName', 'operatingSystem', 'operatingSystemServicePack', 'operatingSystemVersion', 'lastLogon', 'userAccountControl', 'whenCreated', 'objectSid', 'description', 'objectClass']
 MINIMAL_USERATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'primaryGroupId', 'whenCreated', 'whenChanged', 'lastLogon', 'userAccountControl', 'pwdLastSet', 'objectSid', 'description', 'objectClass']
@@ -435,7 +439,7 @@ class reportWriter(object):
         #In grouped view, don't include the memberOf property to reduce output size
         self.userattributes_grouped = ['cn', 'name', 'sAMAccountName', 'whenCreated', 'whenChanged', 'lastLogon', 'userAccountControl', 'pwdLastSet', 'objectSid', 'description']
         self.groupattributes = ['cn', 'sAMAccountName', 'memberOf', 'description', 'whenCreated', 'whenChanged', 'objectSid']
-        self.policyattributes = ['cn', 'lockOutObservationWindow', 'lockoutDuration', 'lockoutThreshold', 'maxPwdAge', 'minPwdAge', 'minPwdLength', 'pwdHistoryLength', 'pwdProperties']
+        self.policyattributes = ['distinguishedName', 'lockOutObservationWindow', 'lockoutDuration', 'lockoutThreshold', 'maxPwdAge', 'minPwdAge', 'minPwdLength', 'pwdHistoryLength', 'pwdProperties', 'ms-DS-MachineAccountQuota']
         self.trustattributes = ['cn', 'flatName', 'securityIdentifier', 'trustAttributes', 'trustDirection', 'trustType']
 
     #Escape HTML special chars
