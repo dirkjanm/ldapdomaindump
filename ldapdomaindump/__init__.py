@@ -24,7 +24,7 @@
 from __future__ import unicode_literals
 import sys, os, re, codecs, json, argparse, getpass, base64
 # import class and constants
-from datetime import datetime
+from datetime import datetime, timedelta
 try:
     from urllib.parse import quote_plus
 except ImportError:
@@ -446,10 +446,18 @@ class reportWriter(object):
 
     #Convert password max age (in 100 nanoseconds), to days
     def nsToDays(self, length):
-        return abs(length) * .0000001 / 86400
+        # ldap3 >= 2.6 returns timedelta
+        if isinstance(length, timedelta):
+            return length.total_seconds() / 86400
+        else:
+            return abs(length) * .0000001 / 86400
 
     def nsToMinutes(self, length):
-        return abs(length) * .0000001 / 60
+        # ldap3 >= 2.6 returns timedelta
+        if isinstance(length, timedelta):
+            return length.total_seconds() / 60
+        else:
+            return abs(length) * .0000001 / 60
 
     #Parse bitwise flags into a list
     def parseFlags(self, attr, flags_def):
