@@ -378,7 +378,11 @@ class domainDumper(object):
             except (LDAPAttributeError, LDAPCursorError):
                 ugroups = []
             #Add the user default group
-            ugroups.append(self.getGroupCnFromDn(self.groups_dnmap[user.primaryGroupId.value]))
+            try:
+                ugroups.append(self.getGroupCnFromDn(self.groups_dnmap[user.primaryGroupId.value]))
+            # Sometimes we can't query this group or it doesn't exist
+            except KeyError:
+                pass
             for group in ugroups:
                 try:
                     groupsdict[group].append(user)
@@ -602,7 +606,10 @@ class reportWriter(object):
             return self.formatGroupsHtml(att.values)
         #Primary group
         if aname == 'primarygroupid':
-            return self.formatGroupsHtml([self.dd.groups_dnmap[att.value]])
+            try:
+                return self.formatGroupsHtml([self.dd.groups_dnmap[att.value]])
+            except KeyError:
+                return 'NOT FOUND!'
         #Pwd flags
         if aname == 'pwdproperties':
             return ', '.join(self.parseFlags(att, pwd_flags))
@@ -685,7 +692,10 @@ class reportWriter(object):
         if aname == 'member' or aname == 'memberof' and type(att.values) is list:
             return self.formatGroupsGrep(att.values)
         if aname == 'primarygroupid':
-            return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
+            try:
+                return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
+            except KeyError:
+                return 'NOT FOUND!'
         #Domain trust flags
         if aname == 'trustattributes':
             return ', '.join(self.parseFlags(att, trust_flags))
