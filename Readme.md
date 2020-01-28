@@ -10,7 +10,7 @@ ldapdomaindump is a tool which aims to solve this problem, by collecting and par
 
 The tool was designed with the following goals in mind:
 - Easy overview of all users/groups/computers/policies in the domain
-- Authentication both via username and password, as with NTLM hashes (requires ldap3 >=1.3.1)
+- Authentication both via username and password, as with NTLM hashes
 - Possibility to run the tool with an existing authenticated connection to an LDAP service, allowing for integration with relaying tools such as impackets ntlmrelayx
 
 The tool outputs several files containing an overview of objects in the domain:
@@ -25,7 +25,7 @@ As well as two grouped files:
 - *domain_computers_by_os*: Domain computers sorted by Operating System
 
 ## Dependencies and installation
-Requires [ldap3](https://github.com/cannatag/ldap3) > 2.0 and [dnspython](https://github.com/rthalley/dnspython)
+Requires [ldap3](https://github.com/cannatag/ldap3) >= 2.6.1 and [dnspython](https://github.com/rthalley/dnspython)
 
 Both can be installed with `pip install ldap3 dnspython`
 
