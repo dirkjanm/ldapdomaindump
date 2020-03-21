@@ -458,14 +458,14 @@ class reportWriter(object):
         if isinstance(length, timedelta):
             return length.total_seconds() / 86400
         else:
-            return abs(length) * .0000001 / 86400
+            return abs(int(length)) * .0000001 / 86400
 
     def nsToMinutes(self, length):
         # ldap3 >= 2.6 returns timedelta
         if isinstance(length, timedelta):
             return length.total_seconds() / 60
         else:
-            return abs(length) * .0000001 / 60
+            return abs(int(length)) * .0000001 / 60
 
     #Parse bitwise flags into a list
     def parseFlags(self, attr, flags_def):
@@ -473,7 +473,7 @@ class reportWriter(object):
         if attr is None or attr.value is None:
             return outflags
         for flag, val in iteritems(flags_def):
-            if attr.value & val:
+            if int(attr.value) & val:
                 outflags.append(flag)
         return outflags
 
