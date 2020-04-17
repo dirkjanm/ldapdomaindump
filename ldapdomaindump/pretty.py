@@ -2,7 +2,6 @@ import argparse
 import json
 import os.path
 import re
-import sys
 from time import strftime, gmtime
 
 class PrettyOuput(object):

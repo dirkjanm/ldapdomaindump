@@ -103,7 +103,7 @@ LDAPDomainDump includes a utility that can be used to convert ldapdomaindumps `.
 The conversion tool will take the users/groups/computers/trusts `.json` file and convert those to `group_membership.csv` and `trust.csv` which you can add to BloodHound.
 
 ## Visualizing dump with a pretty output like enum4linux
-LDAPDomainDump includes a utility that can be used to output ldapdomaindumps `.json` files to an enum4linux like output. The utility is called `lddpretty` and is added to your path upon installation. Alternatively you can run it with `python -m ldapdomaindump.pretty` or with `python ldapdomaindump/pretty.py` if you are running it from the source.
+LDAPDomainDump includes a utility that can be used to output ldapdomaindumps `.json` files to an enum4linux like output. The utility is called `ldd2pretty` and is added to your path upon installation. Alternatively you can run it with `python -m ldapdomaindump.pretty` or with `python ldapdomaindump/pretty.py` if you are running it from the source.
 
 ## License
 MIT
