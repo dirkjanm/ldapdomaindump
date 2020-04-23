@@ -1,3 +1,5 @@
+from __future__ import print_function
+from builtins import str
 import argparse
 import json
 import os.path
@@ -19,6 +21,8 @@ class PrettyOuput(object):
         return ''.join([str(g) for g in t2bin])
 
     def convert(self, time):
+        if isinstance(time, str):
+            return time
         if time == 0:
             return "None"
         if time == -9223372036854775808:
