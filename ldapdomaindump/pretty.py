@@ -126,7 +126,7 @@ class PrettyOuput(object):
                             user = "NT AUTHORITY\IUSR"
                         print("Group '" + group['attributes']['name'][0] + "' has member: " + dc + "\\" + user)
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description='LDAPDomainDump to pretty output like enum4linux.')
 
     #Main parameters
@@ -147,3 +147,6 @@ if __name__ == "__main__":
         pretty.groups_info(groups, dc.upper())
     else:
         print("Missing parameter --directory /output/")
+
+if __name__ == "__main__":
+    main()
