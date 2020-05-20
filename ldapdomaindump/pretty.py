@@ -119,11 +119,11 @@ class PrettyOuput(object):
                     print("\n[+] Getting domain group memberships:")
                     for user in users:
                         if user == "S-1-5-11":
-                            user = "NT AUTHORITY\Authenticated Users"
+                            user = "NT AUTHORITY\\Authenticated Users"
                         elif user == "S-1-5-4":
-                            user = "NT AUTHORITY\INTERACTIVE"
+                            user = "NT AUTHORITY\\INTERACTIVE"
                         elif user == "S-1-5-17":
-                            user = "NT AUTHORITY\IUSR"
+                            user = "NT AUTHORITY\\IUSR"
                         print("Group '" + group['attributes']['name'][0] + "' has member: " + dc + "\\" + user)
 
 def main():
