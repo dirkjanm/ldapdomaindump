@@ -100,7 +100,7 @@ By default ldapdomaindump will try to dump every single attribute it can read to
 
 ## Visualizing groups with BloodHound
 LDAPDomainDump includes a utility that can be used to convert ldapdomaindumps `.json` files to CSV files suitable for BloodHound. The utility is called `ldd2bloodhound` and is added to your path upon installation. Alternatively you can run it with `python -m ldapdomaindump.convert` or with `python ldapdomaindump/convert.py` if you are running it from the source.
-The conversion tool will take the users/groups/computers/trusts `.json` file and convert those to `group_membership.csv` and `trust.csv` which you can add to BloodHound.
+The conversion tool will take the users/groups/computers/trusts `.json` file and convert those to `group_membership.csv` and `trust.csv` which you can add to BloodHound. *Note that these files are only compatible with **BloodHound 1.x** which is quite old. There are no plans to support the latest version as the [BloodHound.py project](https://github.com/fox-it/BloodHound.py) was made for this. With the DCOnly collection method this tool will also only talk to LDAP and collect more information than ldapdomaindump would*.
 
 ## Visualizing dump with a pretty output like enum4linux
 LDAPDomainDump includes a utility that can be used to output ldapdomaindumps `.json` files to an enum4linux like output. The utility is called `ldd2pretty` and is added to your path upon installation. Alternatively you can run it with `python -m ldapdomaindump.pretty` or with `python ldapdomaindump/pretty.py` if you are running it from the source.
