@@ -473,7 +473,7 @@ class reportWriter(object):
         if attr is None or attr.value is None:
             return outflags
         for flag, val in iteritems(flags_def):
-            if attr.value & val:
+            if int(attr.value) & val:
                 outflags.append(flag)
         return outflags
 
@@ -483,7 +483,7 @@ class reportWriter(object):
         if attr is None:
             return outflags
         for flag, val in iteritems(flags_def):
-            if attr.value == val:
+            if int(attr.value) == val:
                 outflags.append(flag)
         return outflags
 
@@ -790,60 +790,60 @@ class reportWriter(object):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.users, self.userattributes, 'Domain users')
             self.writeHtmlFile('%s.html' % self.config.usersfile, html)
-        if self.config.outputjson:
-            jsonout = self.generateJsonList(dd.users)
-            self.writeJsonFile('%s.json' % self.config.usersfile, jsonout)
         if self.config.outputgrep:
             grepout = self.generateGrepList(dd.users, self.userattributes)
             self.writeGrepFile('%s.grep' % self.config.usersfile, grepout)
+        if self.config.outputjson:
+            jsonout = self.generateJsonList(dd.users)
+            self.writeJsonFile('%s.json' % self.config.usersfile, jsonout)
 
     #Generate report with just a table of all computer accounts
     def generateComputersReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.computers, self.computerattributes, 'Domain computer accounts')
             self.writeHtmlFile('%s.html' % self.config.computersfile, html)
-        if self.config.outputjson:
-            jsonout = self.generateJsonList(dd.computers)
-            self.writeJsonFile('%s.json' % self.config.computersfile, jsonout)
         if self.config.outputgrep:
             grepout = self.generateGrepList(dd.computers, self.computerattributes)
             self.writeGrepFile('%s.grep' % self.config.computersfile, grepout)
+        if self.config.outputjson:
+            jsonout = self.generateJsonList(dd.computers)
+            self.writeJsonFile('%s.json' % self.config.computersfile, jsonout)
 
     #Generate report with just a table of all computer accounts
     def generateGroupsReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.groups, self.groupattributes, 'Domain groups')
             self.writeHtmlFile('%s.html' % self.config.groupsfile, html)
-        if self.config.outputjson:
-            jsonout = self.generateJsonList(dd.groups)
-            self.writeJsonFile('%s.json' % self.config.groupsfile, jsonout)
         if self.config.outputgrep:
             grepout = self.generateGrepList(dd.groups, self.groupattributes)
             self.writeGrepFile('%s.grep' % self.config.groupsfile, grepout)
+        if self.config.outputjson:
+            jsonout = self.generateJsonList(dd.groups)
+            self.writeJsonFile('%s.json' % self.config.groupsfile, jsonout)
 
     #Generate policy report
     def generatePolicyReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.policy, self.policyattributes, 'Domain policy')
             self.writeHtmlFile('%s.html' % self.config.policyfile, html)
-        if self.config.outputjson:
-            jsonout = self.generateJsonList(dd.policy)
-            self.writeJsonFile('%s.json' % self.config.policyfile, jsonout)
         if self.config.outputgrep:
             grepout = self.generateGrepList(dd.policy, self.policyattributes)
             self.writeGrepFile('%s.grep' % self.config.policyfile, grepout)
+        if self.config.outputjson:
+            jsonout = self.generateJsonList(dd.policy)
+            self.writeJsonFile('%s.json' % self.config.policyfile, jsonout)
 
     #Generate policy report
     def generateTrustsReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.trusts, self.trustattributes, 'Domain trusts')
             self.writeHtmlFile('%s.html' % self.config.trustsfile, html)
-        if self.config.outputjson:
-            jsonout = self.generateJsonList(dd.trusts)
-            self.writeJsonFile('%s.json' % self.config.trustsfile, jsonout)
         if self.config.outputgrep:
             grepout = self.generateGrepList(dd.trusts, self.trustattributes)
             self.writeGrepFile('%s.grep' % self.config.trustsfile, grepout)
+        if self.config.outputjson:
+            jsonout = self.generateJsonList(dd.trusts)
+            self.writeJsonFile('%s.json' % self.config.trustsfile, jsonout)
 
 #Some quick logging helpers
 def log_warn(text):
