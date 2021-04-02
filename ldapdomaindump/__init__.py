@@ -479,7 +479,7 @@ class reportWriter(object):
         return outflags
 
     #Parse bitwise trust direction - only one flag applies here, 0x03 overlaps
-    def parseTrustDirection(self, attr, flags_def):
+    def parseSingleFlag(self, attr, flags_def):
         outflags = []
         if attr is None:
             return outflags
@@ -625,9 +625,9 @@ class reportWriter(object):
             if  att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseTrustDirection(att, trust_directions))
+                return ', '.join(self.parseSingleFlag(att, trust_directions))
         if aname == 'trusttype':
-            return ', '.join(self.parseFlags(att, trust_type))
+            return ', '.join(self.parseSingleFlag(att, trust_type))
         if aname == 'securityidentifier':
             return format_sid(att.raw_values[0])
         if aname == 'minpwdage' or  aname == 'maxpwdage':
@@ -708,9 +708,9 @@ class reportWriter(object):
             if att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseTrustDirection(att, trust_directions))
+                return ', '.join(self.parseSingleFlag(att, trust_directions))
         if aname == 'trusttype':
-            return ', '.join(self.parseFlags(att, trust_type))
+            return ', '.join(self.parseSingleFlag(att, trust_type))
         if aname == 'securityidentifier':
             return format_sid(att.raw_values[0])
         #Pwd flags
