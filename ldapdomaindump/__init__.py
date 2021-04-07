@@ -82,6 +82,7 @@ trust_flags = {'NON_TRANSITIVE':0x00000001,
                'TREAT_AS_EXTERNAL':0x00000040,
                'USES_RC4_ENCRYPTION':0x00000080,
                'CROSS_ORGANIZATION_NO_TGT_DELEGATION':0x00000200,
+               'CROSS_ORGANIZATION_ENABLE_TGT_DELEGATION':0x00000800,
                'PIM_TRUST':0x00000400}
 
 # Domain trust direction
