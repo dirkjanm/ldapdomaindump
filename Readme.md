@@ -25,9 +25,9 @@ As well as two grouped files:
 - *domain_computers_by_os*: Domain computers sorted by Operating System
 
 ## Dependencies and installation
-Requires [ldap3](https://github.com/cannatag/ldap3) > 2.0 and [dnspython](https://github.com/rthalley/dnspython)
+Requires [ldap3](https://github.com/cannatag/ldap3) > 2.0, [dnspython](https://github.com/rthalley/dnspython) and [future](https://python-future.org/). ldapdomaindump runs on both python 2 and 3.
 
-Both can be installed with `pip install ldap3 dnspython`
+Dependencies can be installed manually with `pip install ldap3 dnspython future`, but should in most cases be handled by pip when you install the main package either from git or pypi.
 
 The ldapdomaindump package can be installed with `python setup.py install` from the git source, or for the latest release with `pip install ldapdomaindump`.
 
