@@ -9,5 +9,6 @@ setup(name='ldapdomaindump',
       install_requires=['dnspython', 'ldap3>=2.5,!=2.5.2,!=2.5.0,!=2.6', 'future'],
       package_data={'ldapdomaindump': ['style.css']},
       include_package_data=True,
-      scripts=['bin/ldapdomaindump', 'bin/ldd2bloodhound', 'bin/ldd2pretty']
+      scripts=['bin/ldapdomaindump', 'bin/ldd2bloodhound', 'bin/ldd2pretty'],
+      license="MIT",
       )
