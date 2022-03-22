@@ -599,7 +599,7 @@ class reportWriter(object):
         if value is None:
             return ''
         #Other type: just return it
-        return value
+        return str(value)
 
     #Format an attribute to a human readable format
     def formatAttribute(self, att, formatCnAsGroup=False):
