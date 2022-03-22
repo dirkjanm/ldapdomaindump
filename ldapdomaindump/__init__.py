@@ -599,7 +599,6 @@ class reportWriter(object):
         else:
             return_value = str(value)
 
-        #Other type: just return it
         return return_value
 
     #Format an attribute to a human readable format
