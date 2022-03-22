@@ -585,19 +585,15 @@ class reportWriter(object):
     def formatString(self, value):
         return_value: str
 
-        if type(value) is datetime:
+        if isinstance(value, datetime):
             try:
                 return_value = value.strftime('%x %X')
             except ValueError:
                 #Invalid date
                 return_value = '0'
-        # Make sure it's a unicode string
-        elif type(value) is bytes:
+        elif isinstance(value, bytes):
+            # Make sure it's a unicode string
             return_value = value.encode('utf8')
-        elif type(value) is str:
-            return_value = value
-        elif type(value) is int:
-            return_value = str(value)
         elif value is None:
             return_value = ''
         else:
