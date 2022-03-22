@@ -594,6 +594,8 @@ class reportWriter(object):
         elif isinstance(value, bytes):
             # Make sure it's a unicode string
             return_value = value.encode('utf8')
+        elif isinstance(value, list):
+            return_value = ', '.join(value)
         elif value is None:
             return_value = ''
         else:
