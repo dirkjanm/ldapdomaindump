@@ -30,7 +30,7 @@ try:
 except ImportError:
     from urllib import quote_plus
 import ldap3
-from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
+from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM, KERBEROS
 from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError, LDAPInvalidDnError
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
@@ -48,7 +48,6 @@ uac_flags = {'ACCOUNT_DISABLED':0x00000002,
              'ACCOUNT_LOCKED':0x00000010,
              'PASSWD_NOTREQD':0x00000020,
              'PASSWD_CANT_CHANGE': 0x00000040,
-             'PASSWORD_STORE_CLEARTEXT': 0x00000080,
              'NORMAL_ACCOUNT': 0x00000200,
              'WORKSTATION_ACCOUNT':0x00001000,
              'SERVER_TRUST_ACCOUNT': 0x00002000,
@@ -82,7 +81,6 @@ trust_flags = {'NON_TRANSITIVE':0x00000001,
                'TREAT_AS_EXTERNAL':0x00000040,
                'USES_RC4_ENCRYPTION':0x00000080,
                'CROSS_ORGANIZATION_NO_TGT_DELEGATION':0x00000200,
-               'CROSS_ORGANIZATION_ENABLE_TGT_DELEGATION':0x00000800,
                'PIM_TRUST':0x00000400}
 
 # Domain trust direction
@@ -475,17 +473,17 @@ class reportWriter(object):
         if attr is None or attr.value is None:
             return outflags
         for flag, val in iteritems(flags_def):
-            if int(attr.value) & val:
+            if attr.value & val:
                 outflags.append(flag)
         return outflags
 
     #Parse bitwise trust direction - only one flag applies here, 0x03 overlaps
-    def parseSingleFlag(self, attr, flags_def):
+    def parseTrustDirection(self, attr, flags_def):
         outflags = []
         if attr is None:
             return outflags
         for flag, val in iteritems(flags_def):
-            if int(attr.value) == val:
+            if attr.value == val:
                 outflags.append(flag)
         return outflags
 
@@ -626,9 +624,9 @@ class reportWriter(object):
             if  att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseSingleFlag(att, trust_directions))
+                return ', '.join(self.parseTrustDirection(att, trust_directions))
         if aname == 'trusttype':
-            return ', '.join(self.parseSingleFlag(att, trust_type))
+            return ', '.join(self.parseFlags(att, trust_type))
         if aname == 'securityidentifier':
             return format_sid(att.raw_values[0])
         if aname == 'minpwdage' or  aname == 'maxpwdage':
@@ -709,9 +707,9 @@ class reportWriter(object):
             if att.value == 0:
                 return 'DISABLED'
             else:
-                return ', '.join(self.parseSingleFlag(att, trust_directions))
+                return ', '.join(self.parseTrustDirection(att, trust_directions))
         if aname == 'trusttype':
-            return ', '.join(self.parseSingleFlag(att, trust_type))
+            return ', '.join(self.parseFlags(att, trust_type))
         if aname == 'securityidentifier':
             return format_sid(att.raw_values[0])
         #Pwd flags
@@ -792,60 +790,60 @@ class reportWriter(object):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.users, self.userattributes, 'Domain users')
             self.writeHtmlFile('%s.html' % self.config.usersfile, html)
-        if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.users, self.userattributes)
-            self.writeGrepFile('%s.grep' % self.config.usersfile, grepout)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.users)
             self.writeJsonFile('%s.json' % self.config.usersfile, jsonout)
+        if self.config.outputgrep:
+            grepout = self.generateGrepList(dd.users, self.userattributes)
+            self.writeGrepFile('%s.grep' % self.config.usersfile, grepout)
 
     #Generate report with just a table of all computer accounts
     def generateComputersReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.computers, self.computerattributes, 'Domain computer accounts')
             self.writeHtmlFile('%s.html' % self.config.computersfile, html)
-        if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.computers, self.computerattributes)
-            self.writeGrepFile('%s.grep' % self.config.computersfile, grepout)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.computers)
             self.writeJsonFile('%s.json' % self.config.computersfile, jsonout)
+        if self.config.outputgrep:
+            grepout = self.generateGrepList(dd.computers, self.computerattributes)
+            self.writeGrepFile('%s.grep' % self.config.computersfile, grepout)
 
     #Generate report with just a table of all computer accounts
     def generateGroupsReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.groups, self.groupattributes, 'Domain groups')
             self.writeHtmlFile('%s.html' % self.config.groupsfile, html)
-        if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.groups, self.groupattributes)
-            self.writeGrepFile('%s.grep' % self.config.groupsfile, grepout)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.groups)
             self.writeJsonFile('%s.json' % self.config.groupsfile, jsonout)
+        if self.config.outputgrep:
+            grepout = self.generateGrepList(dd.groups, self.groupattributes)
+            self.writeGrepFile('%s.grep' % self.config.groupsfile, grepout)
 
     #Generate policy report
     def generatePolicyReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.policy, self.policyattributes, 'Domain policy')
             self.writeHtmlFile('%s.html' % self.config.policyfile, html)
-        if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.policy, self.policyattributes)
-            self.writeGrepFile('%s.grep' % self.config.policyfile, grepout)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.policy)
             self.writeJsonFile('%s.json' % self.config.policyfile, jsonout)
+        if self.config.outputgrep:
+            grepout = self.generateGrepList(dd.policy, self.policyattributes)
+            self.writeGrepFile('%s.grep' % self.config.policyfile, grepout)
 
     #Generate policy report
     def generateTrustsReport(self, dd):
         if self.config.outputhtml:
             html = self.generateHtmlTable(dd.trusts, self.trustattributes, 'Domain trusts')
             self.writeHtmlFile('%s.html' % self.config.trustsfile, html)
-        if self.config.outputgrep:
-            grepout = self.generateGrepList(dd.trusts, self.trustattributes)
-            self.writeGrepFile('%s.grep' % self.config.trustsfile, grepout)
         if self.config.outputjson:
             jsonout = self.generateJsonList(dd.trusts)
             self.writeJsonFile('%s.json' % self.config.trustsfile, jsonout)
+        if self.config.outputgrep:
+            grepout = self.generateGrepList(dd.trusts, self.trustattributes)
+            self.writeGrepFile('%s.grep' % self.config.trustsfile, grepout)
 
 #Some quick logging helpers
 def log_warn(text):
@@ -866,6 +864,7 @@ def main():
     parser.add_argument("-u", "--user", type=native_str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
     parser.add_argument("-p", "--password", type=native_str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
     parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
+    parser.add_argument("-k", "--kerberos", action='store_true', default=False, help="Use kerberos authentication and sets authtype to SASL")
 
     #Output parameters
     outputgroup = parser.add_argument_group("Output options")
@@ -914,23 +913,35 @@ def main():
 
     #Prompt for password if not set
     authentication = None
-    if args.user is not None:
+    if args.user is not None and args.kerberos is False:
         if args.authtype == 'SIMPLE':
             authentication = 'SIMPLE'
         else:
             authentication = NTLM
         if not '\\' in args.user:
-            log_warn('Username must include a domain, use: DOMAIN\\username')
-            sys.exit(1)
+            #log_warn('Username must include a domain, use: DOMAIN\\username')
+            #sys.exit(1)
+             pass
         if args.password is None:
             args.password = getpass.getpass()
+    elif args.kerberos:
+        authentication = SASL
     else:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
     # define the server and the connection
     s = Server(args.host, get_info=ALL)
     log_info('Connecting to host...')
-
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    if args.kerberos is False:
+        c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    else:
+    #need a different type of connection if we are doing Kerberos
+        if '\\' in args.user:
+            kerbUser = args.user.split('\\')[1] #grab just the username from the supplied input
+        else:
+            kerbUser = args.user
+        c = Connection(s, user=kerbUser, authentication=SASL, sasl_mechanism=KERBEROS)
+        log_info('Starting tls, check if this is needed with binding but it should be yeah?')
+        c.start_tls()
     log_info('Binding to host')
     # perform the Bind operation
     if not c.bind():
