@@ -23,31 +23,15 @@ class PrettyOuput(object):
     def convert(self, time):
         if isinstance(time, str):
             return time
+        convert_time = lambda res: "{0} days {1} hours {2} minutes".format(res // 86400, res % 86400 // 3600, res % 3600 // 60)
+
         if time == 0:
             return "None"
-        if time == -9223372036854775808:
+        elif time == -9223372036854775808:
             return "Not Set"
-        sec = abs(time) // 10000000
-        days = sec // 86400
-        sec -= 86400*days
-        hrs = sec // 3600
-        sec -= 3600*hrs
-        mins = sec // 60
-        sec -= 60*mins
-        result = ""
-        if days > 1:
-            result += "{0} days ".format(days)
-        elif days == 1:
-            result += "{0} day ".format(days)
-        if hrs > 1:
-            result += "{0} hours ".format(hrs)
-        elif hrs == 1:
-            result += "{0} hour ".format(hrs)
-        if mins > 1:
-            result += "{0} minutes ".format(mins)
-        elif mins == 1:
-            result += "{0} minute ".format(mins)
-        return result
+
+        res = abs(time) // 10000000
+        return convert_time(res)
 
     def password_complexity(self, data):
 
