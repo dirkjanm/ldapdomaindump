@@ -535,9 +535,8 @@ class reportWriter(object):
 
     #Write generated HTML to file
     def writeHtmlFile(self, rel_outfile, body, genfunc=None, genargs=None, closeTable=True):
-        if not os.path.exists(self.config.basepath):
-            os.makedirs(self.config.basepath)
         outfile = os.path.join(self.config.basepath, rel_outfile)
+        os.makedirs(os.path.dirname(outfile), exist_ok=True)
         with codecs.open(outfile, 'w', 'utf8') as of:
             of.write('<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8">')
             #Include the style
