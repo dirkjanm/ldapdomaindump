@@ -582,23 +582,15 @@ class reportWriter(object):
 
     #Format a value for HTML
     def formatString(self, value):
-        if type(value) is datetime:
-            try:
-                return value.strftime('%x %X')
-            except ValueError:
-                #Invalid date
-                return '0'
-        # Make sure it's a unicode string
-        if type(value) is bytes:
-            return value.encode('utf8')
-        if type(value) is str:
-            return value#.encode('utf8')
-        if type(value) is int:
-            return str(value)
-        if value is None:
-            return ''
-        #Other type: just return it
-        return value
+        formatters = {
+            datetime: lambda x: x.strftime('%x %X'),
+            bytes: lambda x: x.decode('utf8'),
+            str: lambda x: x,
+            int: lambda x: str(x),
+            type(None): lambda x: '',
+        }
+        formatter = formatters.get(type(value), lambda x: x)
+        return formatter(value)
 
     #Format an attribute to a human readable format
     def formatAttribute(self, att, formatCnAsGroup=False):
