@@ -7,7 +7,11 @@ import codecs
 import re
 from ldapdomaindump import trust_flags, trust_directions
 from builtins import str
+<<<<<<< HEAD
 from future.utils import itervalues, iteritems
+=======
+from six import itervalues, iteritems
+>>>>>>> pr/13
 
 logging.basicConfig()
 logger = logging.getLogger('ldd2bloodhound')

@@ -30,7 +30,7 @@ try:
 except ImportError:
     from urllib import quote_plus
 import ldap3
-from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
+from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM, KERBEROS
 from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError, LDAPInvalidDnError
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
@@ -616,6 +616,8 @@ class reportWriter(object):
                 return self.formatGroupsHtml([self.dd.groups_dnmap[att.value]])
             except KeyError:
                 return 'NOT FOUND!'
+        if aname == 'description' and type(att.values) is list:
+             return " ".join(att.values)
         #Pwd flags
         if aname == 'pwdproperties':
             return ', '.join(self.parseFlags(att, pwd_flags))
@@ -702,6 +704,8 @@ class reportWriter(object):
                 return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
             except KeyError:
                 return 'NOT FOUND!'
+        if aname == 'description' and type(att.values) is list:
+            return " ".join(att.values)
         #Domain trust flags
         if aname == 'trustattributes':
             return ', '.join(self.parseFlags(att, trust_flags))
@@ -866,6 +870,7 @@ def main():
     parser.add_argument("-u", "--user", type=native_str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
     parser.add_argument("-p", "--password", type=native_str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
     parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
+    parser.add_argument("-k", "--kerberos", action='store_true', default=False, help="Use kerberos authentication and sets authtype to SASL")
 
     #Output parameters
     outputgroup = parser.add_argument_group("Output options")
@@ -914,7 +919,7 @@ def main():
 
     #Prompt for password if not set
     authentication = None
-    if args.user is not None:
+    if args.user is not None and args.kerberos is False:
         if args.authtype == 'SIMPLE':
             authentication = 'SIMPLE'
         else:
@@ -924,13 +929,24 @@ def main():
             sys.exit(1)
         if args.password is None:
             args.password = getpass.getpass()
+    elif args.kerberos:
+        authentication = SASL
     else:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
     # define the server and the connection
     s = Server(args.host, get_info=ALL)
     log_info('Connecting to host...')
-
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    if args.kerberos is False:
+        c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    else:
+    #need a different type of connection if we are doing Kerberos
+        if '\\' in args.user:
+            kerbUser = args.user.split('\\')[1] #grab just the username from the supplied input
+        else:
+            kerbUser = args.user
+        c = Connection(s, user=kerbUser, authentication=SASL, sasl_mechanism=KERBEROS)
+        log_info('Starting tls, check if this is needed with binding but it should be yeah?')
+        c.start_tls()
     log_info('Binding to host')
     # perform the Bind operation
     if not c.bind():
