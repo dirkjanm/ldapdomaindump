@@ -616,6 +616,8 @@ class reportWriter(object):
                 return self.formatGroupsHtml([self.dd.groups_dnmap[att.value]])
             except KeyError:
                 return 'NOT FOUND!'
+        if aname == 'description' and type(att.values) is list:
+             return " ".join(att.values)
         #Pwd flags
         if aname == 'pwdproperties':
             return ', '.join(self.parseFlags(att, pwd_flags))
@@ -702,6 +704,8 @@ class reportWriter(object):
                 return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
             except KeyError:
                 return 'NOT FOUND!'
+        if aname == 'description' and type(att.values) is list:
+            return " ".join(att.values)
         #Domain trust flags
         if aname == 'trustattributes':
             return ', '.join(self.parseFlags(att, trust_flags))
