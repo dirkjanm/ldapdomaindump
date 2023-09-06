@@ -1,3 +1,2 @@
 ldap3
 dnspython
-future

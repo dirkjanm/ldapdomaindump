@@ -1,12 +1,10 @@
-from __future__ import print_function
-from builtins import str
 import argparse
 import json
 import os.path
 import re
 from time import strftime, gmtime
 
-class PrettyOuput(object):
+class PrettyOuput():
 
     def d2b(self, a):
         tbin = []

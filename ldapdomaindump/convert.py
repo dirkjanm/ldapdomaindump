@@ -6,13 +6,11 @@ import json
 import codecs
 import re
 from ldapdomaindump import trust_flags, trust_directions
-from builtins import str
-from future.utils import itervalues, iteritems
 
 logging.basicConfig()
 logger = logging.getLogger('ldd2bloodhound')
 
-class Utils(object):
+class Utils():
     @staticmethod
     def ldap_to_domain(ldap):
         return re.sub(',DC=', '.', ldap[ldap.find('DC='):], flags=re.I)[3:]
@@ -27,7 +25,7 @@ class Utils(object):
             'memberOf': groupo['attributes']['memberOf'] if 'memberOf' in groupo['attributes'] else []
         }
 
-class BloodHoundConverter(object):
+class BloodHoundConverter():
     def __init__(self):
         # Input files
         self.computers_files = []
@@ -87,7 +85,7 @@ class BloodHoundConverter(object):
         # Read group mapping - write to csv
         # file is already created here, we just append
         with codecs.open('group_membership.csv', 'a', 'utf-8') as outfile:
-            for group in itervalues(self.groups_by_dn):
+            for group in self.groups_by_dn.values():
                 for membergroup in group['memberOf']:
                     try:
                         outfile.write('%s,%s,%s\n' % (self.groups_by_dn[membergroup]['principal'], group['principal'], 'group'))
