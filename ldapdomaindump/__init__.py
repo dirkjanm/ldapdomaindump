@@ -30,6 +30,7 @@ try:
 except ImportError:
     from urllib import quote_plus
 import ldap3
+import ssl
 from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
 from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError, LDAPInvalidDnError
 from ldap3.abstract import attribute, attrDef
@@ -156,6 +157,7 @@ class domainDumpConfig(object):
         self.lookuphostnames = False #Look up hostnames of computers to get their IP address
         self.dnsserver = '' #Addres of the DNS server to use, if not specified default DNS will be used
         self.minimal = False #Only query minimal list of attributes
+        self.ldap_channel_binding  = False
 
 #Domaindumper main class
 class domainDumper(object):
@@ -885,6 +887,7 @@ def main():
     miscgroup.add_argument("-r", "--resolve", action='store_true', help="Resolve computer hostnames (might take a while and cause high traffic on large networks)")
     miscgroup.add_argument("-n", "--dns-server", help="Use custom DNS resolver instead of system DNS (try a domain controller IP)")
     miscgroup.add_argument("-m", "--minimal", action='store_true', default=False, help="Only query minimal set of attributes to limit memmory usage")
+    miscgroup.add_argument("--ldap-channel-binding", action='store_true', default=False, help="Use ldap channel binding")
 
     args = parser.parse_args()
     #Create default config
@@ -898,6 +901,8 @@ def main():
     #Minimal attributes?
     if args.minimal:
         cnf.minimal = True
+    if args.ldap_channel_binding:
+        cnf.ldap_channel_binding = True
     #Custom separator?
     if args.delimiter is not None:
         cnf.grepsplitchar = args.delimiter
@@ -931,10 +936,33 @@ def main():
     else:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
     # define the server and the connection
-    s = Server(args.host, get_info=ALL)
     log_info('Connecting to host...')
 
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    if args.ldap_channel_binding:
+        if not hasattr(ldap3, 'TLS_CHANNEL_BINDING'):
+            raise Exception("To use LDAP channel binding, install the patched ldap3 module: pip3 install git+https://github.com/ly4k/ldap3")
+        channel_binding = {}
+        version=ssl.PROTOCOL_TLSv1_2
+        tls = ldap3.Tls(validate=ssl.CERT_NONE, version=version, ciphers='ALL:@SECLEVEL=0')
+        s = ldap3.Server(
+            args.host,
+            use_ssl=True,
+            get_info=ALL,
+            tls=tls
+        )
+        channel_binding["channel_binding"] = ldap3.TLS_CHANNEL_BINDING
+        c = Connection(
+            s,
+            user=args.user,
+            password=args.password,
+            authentication=ldap3.NTLM,
+            auto_referrals=False,
+            **channel_binding
+        )
+
+    else:
+        s = Server(args.host, get_info=ALL)
+        c = Connection(s, user=args.user, password=args.password, authentication=authentication)
     log_info('Binding to host')
     # perform the Bind operation
     if not c.bind():
