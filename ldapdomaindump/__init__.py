@@ -30,7 +30,6 @@ try:
 except ImportError:
     from urllib import quote_plus
 import ldap3
-import ssl
 from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
 from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError, LDAPInvalidDnError
 from ldap3.abstract import attribute, attrDef
@@ -942,6 +941,7 @@ def main():
         if not hasattr(ldap3, 'TLS_CHANNEL_BINDING'):
             raise Exception("To use LDAP channel binding, install the patched ldap3 module: pip3 install git+https://github.com/ly4k/ldap3")
         channel_binding = {}
+        import ssl
         version=ssl.PROTOCOL_TLSv1_2
         tls = ldap3.Tls(validate=ssl.CERT_NONE, version=version, ciphers='ALL:@SECLEVEL=0')
         s = ldap3.Server(
