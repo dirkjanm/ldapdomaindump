@@ -968,6 +968,8 @@ def main():
     if not c.bind():
         log_warn('Could not bind with specified credentials')
         log_warn(c.result)
+        if c.result['result'] == 8:
+            log_warn('strongerAuthRequired error received, try using --ldap-channel-binding option')
         sys.exit(1)
     log_success('Bind OK')
     log_info('Starting domain dump')
