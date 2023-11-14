@@ -21,22 +21,16 @@
 # SOFTWARE.
 #
 ####################
-from __future__ import unicode_literals
 import sys, os, re, codecs, json, argparse, getpass, base64
 # import class and constants
 from datetime import datetime, timedelta
-try:
-    from urllib.parse import quote_plus
-except ImportError:
-    from urllib import quote_plus
+from urllib.parse import quote_plus
 import ldap3
 from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
 from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError, LDAPInvalidDnError
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
 from ldap3.protocol.formatters.formatters import format_sid
-from builtins import str
-from future.utils import itervalues, iteritems, native_str
 
 # dnspython, for resolving hostnames
 import dns.resolver
@@ -125,7 +119,7 @@ MINIMAL_USERATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'primaryGr
 MINIMAL_GROUPATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'description', 'whenCreated', 'whenChanged', 'objectSid', 'distinguishedName', 'objectClass']
 
 #Class containing the default config
-class domainDumpConfig(object):
+class domainDumpConfig():
     def __init__(self):
         #Base path
         self.basepath = '.'
@@ -158,7 +152,7 @@ class domainDumpConfig(object):
         self.minimal = False #Only query minimal list of attributes
 
 #Domaindumper main class
-class domainDumper(object):
+class domainDumper():
     def __init__(self, server, connection, config, root=None):
         self.server = server
         self.connection = connection
@@ -429,7 +423,7 @@ class domainDumper(object):
         rw.generateComputersByOsReport(self)
         rw.generateUsersByGroupReport(self)
 
-class reportWriter(object):
+class reportWriter():
     def __init__(self, config):
         self.config = config
         self.dd = None
@@ -474,7 +468,7 @@ class reportWriter(object):
         outflags = []
         if attr is None or attr.value is None:
             return outflags
-        for flag, val in iteritems(flags_def):
+        for flag, val in flags_def.items():
             if int(attr.value) & val:
                 outflags.append(flag)
         return outflags
@@ -484,7 +478,7 @@ class reportWriter(object):
         outflags = []
         if attr is None:
             return outflags
-        for flag, val in iteritems(flags_def):
+        for flag, val in flags_def.items():
             if int(attr.value) == val:
                 outflags.append(flag)
         return outflags
@@ -528,7 +522,7 @@ class reportWriter(object):
     #Generate several HTML tables for grouped reports
     def generateGroupedHtmlTables(self, groups, attributes):
         first = True
-        for groupname, members in iteritems(groups):
+        for groupname, members in groups.items():
             yield self.generateHtmlTable(members, attributes, groupname, first, specialGroupsFormat=True)
             if first:
                 first = False
@@ -761,7 +755,7 @@ class reportWriter(object):
         #Start of the list
         yield '['
         firstGroup = True
-        for group in iteritems(groups):
+        for group in groups.items():
             if not firstGroup:
                 #Separate items
                 yield ','
@@ -867,8 +861,8 @@ def main():
     #Main parameters
     #maingroup = parser.add_argument_group("Main options")
     parser.add_argument("host", type=str, metavar='HOSTNAME', help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
-    parser.add_argument("-u", "--user", type=native_str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
-    parser.add_argument("-p", "--password", type=native_str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
+    parser.add_argument("-u", "--user", type=str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
+    parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
     parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
 
     #Output parameters
