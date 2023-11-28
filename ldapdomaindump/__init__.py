@@ -114,8 +114,8 @@ attr_translations = {'sAMAccountName':'SAM Name',
                      'ms-DS-MachineAccountQuota':'Machine Account Quota',
                      'flatName':'NETBIOS Domain name'}
 
-MINIMAL_COMPUTERATTRIBUTES = ['cn', 'sAMAccountName', 'dNSHostName', 'operatingSystem', 'operatingSystemServicePack', 'operatingSystemVersion', 'lastLogon', 'userAccountControl', 'whenCreated', 'objectSid', 'description', 'objectClass']
-MINIMAL_USERATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'primaryGroupId', 'whenCreated', 'whenChanged', 'lastLogon', 'userAccountControl', 'pwdLastSet', 'objectSid', 'description', 'servicePrincipalName', 'objectClass']
+MINIMAL_COMPUTERATTRIBUTES = ['cn', 'sAMAccountName', 'dNSHostName', 'operatingSystem', 'operatingSystemServicePack', 'operatingSystemVersion', 'lastLogon', 'userAccountControl', 'whenCreated', 'objectSid', 'description', 'msDS-AllowedToDelegateTo', 'objectClass']
+MINIMAL_USERATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'primaryGroupId', 'whenCreated', 'whenChanged', 'lastLogon', 'userAccountControl', 'pwdLastSet', 'objectSid', 'description', 'servicePrincipalName', 'msDS-AllowedToDelegateTo', 'objectClass']
 MINIMAL_GROUPATTRIBUTES = ['cn', 'name', 'sAMAccountName', 'memberOf', 'description', 'whenCreated', 'whenChanged', 'objectSid', 'distinguishedName', 'objectClass']
 
 #Class containing the default config
