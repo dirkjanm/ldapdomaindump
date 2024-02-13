@@ -604,6 +604,8 @@ class reportWriter():
         #List of groups
         if aname == 'member' or aname == 'memberof' and type(att.values) is list:
             return self.formatGroupsHtml(att.values)
+        if aname == 'serviceprincipalname' and type(att.values) is list:
+            return self.formatSPNsHtml(att.values)
         #Primary group
         if aname == 'primarygroupid':
             try:
@@ -684,6 +686,14 @@ class reportWriter():
             outcache.append(cn)
         return ', '.join(outcache)
 
+    #Format SPNs to readable HTML
+    def formatSPNsHtml(self, spnlist):
+        return '<br />'.join(spnlist)
+
+    #Format SPNs to readable HTML
+    def formatSPNsGrep(self, spnlist):
+        return ','.join(spnlist)
+
     #Format attribute for grepping
     def formatGrepAttribute(self, att):
         aname = att.key.lower()
@@ -693,6 +703,8 @@ class reportWriter():
         #List of groups
         if aname == 'member' or aname == 'memberof' and type(att.values) is list:
             return self.formatGroupsGrep(att.values)
+        if aname == 'serviceprincipalname' and type(att.values) is list:
+            return self.formatSPNsGrep(att.values)
         if aname == 'primarygroupid':
             try:
                 return self.formatGroupsGrep([self.dd.groups_dnmap[att.value]])
