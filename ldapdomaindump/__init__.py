@@ -674,7 +674,7 @@ class reportWriter():
             outcache.append('<a href="%s.html#cn_%s" title="%s">%s</a>' % (self.config.users_by_group, quote_plus(self.formatId(cn)), self.htmlescape(group), self.htmlescape(cn)))
         return ', '.join(outcache)
 
-    #Format groups to readable HTML
+    #Format groups to greppable format
     def formatGroupsGrep(self, grouplist):
         outcache = []
         for group in grouplist:
@@ -690,7 +690,7 @@ class reportWriter():
     def formatSPNsHtml(self, spnlist):
         return '<br />'.join(spnlist)
 
-    #Format SPNs to readable HTML
+    #Format SPNs to greppable format
     def formatSPNsGrep(self, spnlist):
         return ','.join(spnlist)
 
