@@ -309,12 +309,9 @@ class domainDumper():
             try:
                 answers = dnsresolver.query(computer.dNSHostName.values[0], 'A')
                 ip = str(answers.response.answer[0][0])
-            except dns.resolver.NXDOMAIN:
-                ip = 'error.NXDOMAIN'
-            except dns.resolver.Timeout:
-                ip = 'error.TIMEOUT'
-            except (LDAPAttributeError, LDAPCursorError):
-                ip = 'error.NOHOSTNAME'
+            #Catch all exceptions, so the script does not crash if a DNS lookup fails
+            except Exception as e:
+                ip = f'error.{type(e).__name__.upper()}'
             #Construct a custom attribute as workaround
             ipatt = attribute.Attribute(ipdef, computer, None)
             ipatt.__dict__['_response'] = ip
