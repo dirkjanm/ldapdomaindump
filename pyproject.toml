@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ldapdomaindump"
+version = "0.10.0"
+description = "Active Directory information dumper via LDAP"
+authors = [
+  { name = "Dirk-jan Mollema", email = "dirkjan@dirkjanm.io" }
+]
+urls = { "Homepage" = "https://github.com/dirkjanm/ldapdomaindump/" }
+requires-python = ">=3.6"
+license = "MIT"
+dependencies = [
+  "dnspython",
+  "ldap3>=2.5,!=2.5.2,!=2.5.0,!=2.6"
+]
+
+[tool.setuptools.packages.find]
+include = ["ldapdomaindump"]
+
+[tool.setuptools.package-data]
+ldapdomaindump = ["style.css"]
+
+[project.scripts]
+ldapdomaindump = "ldapdomaindump:main"
+ldd2bloodhound = "ldapdomaindump.convert:ldd2bloodhound"
+ldd2pretty = "ldapdomaindump.pretty:main"

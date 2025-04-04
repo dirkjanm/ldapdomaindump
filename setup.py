@@ -1,9 +1,9 @@
 from setuptools import setup
 setup(name='ldapdomaindump',
-      version='0.9.4',
+      version='0.10.0',
       description='Active Directory information dumper via LDAP',
       author='Dirk-jan Mollema',
-      author_email='dirkjan@sanoweb.nl',
+      author_email='dirkjan@dirkjanm.io',
       url='https://github.com/dirkjanm/ldapdomaindump/',
       packages=['ldapdomaindump'],
       requires_python=">=3.6",
