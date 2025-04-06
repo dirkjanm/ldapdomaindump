@@ -1,25 +1,21 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ldapdomaindump"
-version = "0.10.0"
+version = "0.10.1"
 description = "Active Directory information dumper via LDAP"
 authors = [
   { name = "Dirk-jan Mollema", email = "dirkjan@dirkjanm.io" }
 ]
 urls = { "Homepage" = "https://github.com/dirkjanm/ldapdomaindump/" }
 requires-python = ">=3.6"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
   "dnspython",
   "ldap3>=2.5,!=2.5.2,!=2.5.0,!=2.6"
-]
-classifiers = [
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
 ]
 
 [tool.setuptools.packages.find]
