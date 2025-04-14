@@ -577,23 +577,25 @@ class reportWriter():
 
     #Format a value for HTML
     def formatString(self, value):
-        if type(value) is datetime:
+        return_value: str
+
+        if isinstance(value, datetime):
             try:
-                return value.strftime('%x %X')
+                return_value = value.strftime('%x %X')
             except ValueError:
                 #Invalid date
-                return '0'
-        # Make sure it's a unicode string
-        if type(value) is bytes:
-            return value.encode('utf8')
-        if type(value) is str:
-            return value#.encode('utf8')
-        if type(value) is int:
-            return str(value)
-        if value is None:
-            return ''
-        #Other type: just return it
-        return value
+                return_value = '0'
+        elif isinstance(value, bytes):
+            # Make sure it's a unicode string
+            return_value = value.encode('utf8')
+        elif isinstance(value, list):
+            return_value = ', '.join(value)
+        elif value is None:
+            return_value = ''
+        else:
+            return_value = str(value)
+
+        return return_value
 
     #Format an attribute to a human readable format
     def formatAttribute(self, att, formatCnAsGroup=False):
