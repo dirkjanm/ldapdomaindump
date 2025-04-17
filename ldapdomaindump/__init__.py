@@ -925,13 +925,16 @@ def main():
     #Prompt for password if not set
     authentication = None
     if args.user is not None:
-        if args.authtype == 'SIMPLE':
-            authentication = 'SIMPLE'
-        else:
-            authentication = NTLM
         if not '\\' in args.user:
             log_warn('Username must include a domain, use: DOMAIN\\username')
             sys.exit(1)
+        if args.authtype == 'SIMPLE':
+            authentication = 'SIMPLE'
+            dom, usr = args.user.split('\\', 1)
+            formatted_user = f"{usr}@{dom}"
+        else:
+            authentication = NTLM
+            formatted_user = args.user
         if args.password is None:
             args.password = getpass.getpass()
     else:
@@ -940,7 +943,7 @@ def main():
     s = Server(args.host, get_info=ALL)
     log_info('Connecting to host...')
 
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    c = Connection(s, user=formatted_user, password=args.password, authentication=authentication)
     log_info('Binding to host')
     # perform the Bind operation
     if not c.bind():
