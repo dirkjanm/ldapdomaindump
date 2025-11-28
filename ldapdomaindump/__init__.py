@@ -150,6 +150,7 @@ class domainDumpConfig():
         self.lookuphostnames = False #Look up hostnames of computers to get their IP address
         self.dnsserver = '' #Addres of the DNS server to use, if not specified default DNS will be used
         self.minimal = False #Only query minimal list of attributes
+        self.ldap_channel_binding = False #Use LDAP channel binding for authentication
 
 #Domaindumper main class
 class domainDumper():
@@ -891,6 +892,7 @@ def main():
     miscgroup.add_argument("-r", "--resolve", action='store_true', help="Resolve computer hostnames (might take a while and cause high traffic on large networks)")
     miscgroup.add_argument("-n", "--dns-server", help="Use custom DNS resolver instead of system DNS (try a domain controller IP)")
     miscgroup.add_argument("-m", "--minimal", action='store_true', default=False, help="Only query minimal set of attributes to limit memmory usage")
+    miscgroup.add_argument("--ldap-channel-binding", action='store_true', default=False, help="Use LDAP channel binding (requires ldap3 >= 2.10)")
 
     args = parser.parse_args()
     #Create default config
@@ -921,6 +923,9 @@ def main():
         cnf.basepath = args.outdir
     #Do we really need grouped json files?
     cnf.groupedjson = args.grouped_json
+    #Use LDAP channel binding?
+    if args.ldap_channel_binding:
+        cnf.ldap_channel_binding = True
 
     #Prompt for password if not set
     authentication = None
@@ -937,15 +942,32 @@ def main():
     else:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
     # define the server and the connection
-    s = Server(args.host, get_info=ALL)
     log_info('Connecting to host...')
 
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    if args.ldap_channel_binding:
+        # Check if ldap3 supports channel binding (requires ldap3 >= 2.10)
+        if not hasattr(ldap3, 'TLS_CHANNEL_BINDING'):
+            log_warn('To use LDAP channel binding, install ldap3 >= 2.10:')
+            log_warn('pip3 install git+https://github.com/cannatag/ldap3.git')
+            sys.exit(1)
+
+        import ssl
+        tls = ldap3.Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS, ciphers='ALL:@SECLEVEL=0')
+        s = Server(args.host, use_ssl=True, get_info=ALL, tls=tls)
+        channel_binding = {"channel_binding": ldap3.TLS_CHANNEL_BINDING}
+        c = Connection(s, user=args.user, password=args.password, authentication=NTLM, auto_referrals=False, **channel_binding)
+    else:
+        s = Server(args.host, get_info=ALL)
+        c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+
     log_info('Binding to host')
     # perform the Bind operation
     if not c.bind():
         log_warn('Could not bind with specified credentials')
         log_warn(c.result)
+        # Provide helpful hint for strongerAuthRequired error
+        if c.result.get('result') == 8:
+            log_warn('Hint: Server requires stronger authentication. Try using --ldap-channel-binding')
         sys.exit(1)
     log_success('Bind OK')
     log_info('Starting domain dump')
