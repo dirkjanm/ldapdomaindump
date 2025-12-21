@@ -10,7 +10,7 @@ ldapdomaindump is a tool which aims to solve this problem, by collecting and par
 
 The tool was designed with the following goals in mind:
 - Easy overview of all users/groups/computers/policies in the domain
-- Authentication both via username and password, as with NTLM hashes (requires ldap3 >=1.3.1)
+- Authentication via username and password, NTLM hashes, or Kerberos tickets (requires ldap3 >=1.3.1)
 - Possibility to run the tool with an existing authenticated connection to an LDAP service, allowing for integration with relaying tools such as impackets ntlmrelayx
 
 The tool outputs several files containing an overview of objects in the domain:
@@ -25,9 +25,9 @@ As well as two grouped files:
 - *domain_computers_by_os*: Domain computers sorted by Operating System
 
 ## Dependencies and installation
-Requires [ldap3](https://github.com/cannatag/ldap3) > 2.0 and [dnspython](https://github.com/rthalley/dnspython). ldapdomaindump requires Python 3.6 or greater.
+Requires [ldap3](https://github.com/cannatag/ldap3) > 2.0, [dnspython](https://github.com/rthalley/dnspython), and [gssapi](https://github.com/pythongssapi/python-gssapi) for Kerberos support. ldapdomaindump requires Python 3.6 or greater.
 
-Dependencies can be installed manually with `pip install ldap3 dnspython future`, but should in most cases be handled by pip when you install the main package either from git or pypi.
+Dependencies can be installed manually with `pip install ldap3 dnspython gssapi future`, but should in most cases be handled by pip when you install the main package either from git or pypi.
 
 The ldapdomaindump package can be installed with `python setup.py install` from the git source, or for the latest release with `pip install ldapdomaindump`.
 
@@ -39,10 +39,10 @@ There are 3 ways to use the tool:
 
 Help can be obtained with the -h switch:
 ```
-usage: ldapdomaindump.py [-h] [-u USERNAME] [-p PASSWORD] [-at {NTLM,SIMPLE}]
+usage: ldapdomaindump.py [-h] [-u USERNAME] [-p PASSWORD] [-at {NTLM,SIMPLE,KERBEROS}]
                          [-o DIRECTORY] [--no-html] [--no-json] [--no-grep]
                          [--grouped-json] [-d DELIMITER] [-r] [-n DNS_SERVER]
-                         [-m]
+                         [-m] [-k KDC] [--no-ccache]
                          HOSTNAME
 
 Domain information dumper via LDAP. Dumps users/computers/groups and
@@ -59,8 +59,8 @@ Main options:
                         anonymous authentication
   -p PASSWORD, --password PASSWORD
                         Password or LM:NTLM hash, will prompt if not specified
-  -at {NTLM,SIMPLE}, --authtype {NTLM,SIMPLE}
-                        Authentication type (NTLM or SIMPLE, default: NTLM)
+  -at {NTLM,SIMPLE,KERBEROS}, --authtype {NTLM,SIMPLE,KERBEROS}
+                        Authentication type (NTLM, SIMPLE, or KERBEROS, default: NTLM)
 
 Output options:
   -o DIRECTORY, --outdir DIRECTORY
@@ -82,11 +82,16 @@ Misc options:
                         domain controller IP)
   -m, --minimal         Only query minimal set of attributes to limit memmory
                         usage
+  -k KDC, --kdc KDC     KDC hostname or IP for Kerberos authentication
+  --no-ccache           Do not use Kerberos credential cache for
+                        authentication
 ```
 
 ## Options
 ### Authentication
 Most AD servers support NTLM authentication. In the rare case that it does not, use --authtype SIMPLE.
+
+For Kerberos authentication, use --authtype KERBEROS. The username should be in the format user@domain.com or DOMAIN\\user. Kerberos tickets will be obtained automatically from the system cache or by contacting the KDC. Make sure your system is properly configured for Kerberos authentication (e.g., via /etc/krb5.conf on Linux).
 
 ### Output formats
 By default the tool outputs all files in HTML, JSON and tab delimited output (greppable). There are also two grouped files (users_by_group and computers_by_os) for convenience. These do not have a greppable output. JSON output for grouped files is disabled by default since it creates very large files without any data that isn't present in the other files already.
