@@ -26,7 +26,7 @@ import sys, os, re, codecs, json, argparse, getpass, base64
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 import ldap3
-from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM
+from ldap3 import Server, Connection, SIMPLE, SYNC, ALL, SASL, NTLM, GSSAPI
 from ldap3.core.exceptions import LDAPKeyError, LDAPAttributeError, LDAPCursorError, LDAPInvalidDnError
 from ldap3.abstract import attribute, attrDef
 from ldap3.utils import dn
@@ -875,7 +875,7 @@ def main():
     parser.add_argument("host", type=str, metavar='HOSTNAME', help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
     parser.add_argument("-u", "--user", type=str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
     parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
-    parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
+    parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE', 'KERBEROS'], default='NTLM', help="Authentication type (NTLM, SIMPLE, or KERBEROS, default: NTLM)")
 
     #Output parameters
     outputgroup = parser.add_argument_group("Output options")
@@ -891,6 +891,8 @@ def main():
     miscgroup.add_argument("-r", "--resolve", action='store_true', help="Resolve computer hostnames (might take a while and cause high traffic on large networks)")
     miscgroup.add_argument("-n", "--dns-server", help="Use custom DNS resolver instead of system DNS (try a domain controller IP)")
     miscgroup.add_argument("-m", "--minimal", action='store_true', default=False, help="Only query minimal set of attributes to limit memmory usage")
+    miscgroup.add_argument("-k", "--kdc", help="KDC hostname or IP for Kerberos authentication")
+    miscgroup.add_argument("--no-ccache", action='store_true', help="Do not use Kerberos credential cache for authentication")
 
     args = parser.parse_args()
     #Create default config
@@ -924,15 +926,113 @@ def main():
 
     #Prompt for password if not set
     authentication = None
+    sasl_mechanism = None
+    sasl_credentials = None
+
     if args.user is not None:
         if args.authtype == 'SIMPLE':
-            authentication = 'SIMPLE'
+            authentication = SIMPLE
+        elif args.authtype == 'KERBEROS':
+            authentication = SASL
+            sasl_mechanism = GSSAPI
+            # For Kerberos, user should be in the format user@domain.com or domain.com\user
+            if '@' not in args.user and '\\' not in args.user:
+                log_warn('For Kerberos authentication, username must include domain, use: user@domain.com or DOMAIN\\user')
+                sys.exit(1)
+            # For Kerberos, password is not needed as tickets are obtained from cache or KDC
+            log_info('Using Kerberos authentication. Make sure you have valid Kerberos tickets or credentials configured.')
+
+            # Always create a temporary krb5.conf for Kerberos authentication to handle realm case sensitivity
+            import tempfile
+            import os
+
+            # Extract domain from username
+            if '@' in args.user:
+                domain = args.user.split('@')[1]
+            elif '\\' in args.user:
+                domain = args.user.split('\\')[0]
+            else:
+                domain = 'UNKNOWN'
+
+            domain_upper = domain.upper()
+            domain_lower = domain.lower()
+
+            # Try to get KDC from system krb5.conf or use default
+            kdc_host = args.kdc
+            if not kdc_host:
+                # Try to find KDC from system config
+                try:
+                    import configparser
+                    config = configparser.ConfigParser()
+                    config.read('/etc/krb5.conf')
+                    if config.has_section('realms') and config.has_option('realms', domain_lower):
+                        realm_config = config.get('realms', domain_lower)
+                        # Extract kdc from the realm config (simple parsing)
+                        for line in realm_config.split('\n'):
+                            line = line.strip()
+                            if line.startswith('kdc ='):
+                                kdc_host = line.split('=')[1].strip()
+                                break
+                except:
+                    pass
+
+            # If still no KDC found, try DNS resolution
+            if not kdc_host:
+                try:
+                    import socket
+                    # Try common KDC naming patterns
+                    for suffix in ['', '-dc', 'dc']:
+                        try:
+                            hostname = f"{suffix}{'.' if suffix else ''}{domain_lower}".lstrip('.')
+                            kdc_host = socket.gethostbyname(hostname)
+                            break
+                        except:
+                            continue
+                except:
+                    pass
+
+            # If KDC is specified via -k option, use it
+            if args.kdc:
+                kdc_host = args.kdc
+                log_info(f'Using custom KDC: {kdc_host}')
+            elif kdc_host:
+                log_info(f'Auto-detected KDC: {kdc_host}')
+            else:
+                log_warn('Could not determine KDC. Please specify with -k option.')
+                sys.exit(1)
+
+            # Create temporary krb5.conf with both upper and lower case realms
+            krb5_content = f"""[libdefaults]
+    default_realm = {domain_upper}
+
+[realms]
+    {domain_upper} = {{
+        kdc = {kdc_host}
+        admin_server = {kdc_host}
+    }}
+    {domain_lower} = {{
+        kdc = {kdc_host}
+        admin_server = {kdc_host}
+    }}
+
+[domain_realm]
+    .{domain_lower} = {domain_upper}
+    {domain_lower} = {domain_upper}
+"""
+
+            temp_krb5 = tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False)
+            temp_krb5.write(krb5_content)
+            temp_krb5.close()
+
+            # Set KRB5_CONFIG environment variable
+            os.environ['KRB5_CONFIG'] = temp_krb5.name
         else:
             authentication = NTLM
-        if not '\\' in args.user:
-            log_warn('Username must include a domain, use: DOMAIN\\username')
-            sys.exit(1)
-        if args.password is None:
+            if not '\\' in args.user:
+                log_warn('Username must include a domain, use: DOMAIN\\username')
+                sys.exit(1)
+
+        if args.authtype != 'KERBEROS' and args.password is None:
             args.password = getpass.getpass()
     else:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
@@ -940,7 +1040,8 @@ def main():
     s = Server(args.host, get_info=ALL)
     log_info('Connecting to host...')
 
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    c = Connection(s, user=args.user, password=args.password, authentication=authentication,
+                   sasl_mechanism=sasl_mechanism, sasl_credentials=sasl_credentials)
     log_info('Binding to host')
     # perform the Bind operation
     if not c.bind():
