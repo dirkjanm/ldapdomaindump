@@ -945,6 +945,26 @@ def main():
     # perform the Bind operation
     if not c.bind():
         log_warn('Could not bind with specified credentials')
+        ad_error_codes = {
+            '525': 'User not found',
+            '52e': 'Invalid credentials',
+            '52f': 'Account restriction',
+            '530': 'Logon time restriction',
+            '531': 'Workstation restriction',
+            '532': 'Password expired',
+            '533': 'Account disabled',
+            '568': 'Too many SIDs',
+            '569': 'Too many context IDs',
+            '701': 'Account expired',
+            '773': 'User must change password',
+            '775': 'Account locked',
+        }
+        m = re.search(r'data ([0-9a-f]+)', c.result.get('message', ''))
+        if m:
+            code = m.group(1)
+            reason = ad_error_codes.get(code)
+            if reason:
+                log_warn('Reason: %s (AD sub-status code: %s)' % (reason, code))
         log_warn(c.result)
         sys.exit(1)
     log_success('Bind OK')
