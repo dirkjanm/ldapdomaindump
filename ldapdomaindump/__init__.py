@@ -297,6 +297,32 @@ class domainDumper():
             #This does not exist, could be in a parent domain
             return False
 
+    # Normalize LDAP SID attribute values to a textual SID (S-1-...)
+    def sidToString(self, sidattr):
+        raw_value = None
+        try:
+            raw_value = sidattr.raw_values[0]
+        except (AttributeError, IndexError, TypeError):
+            raw_value = None
+
+        if isinstance(raw_value, (bytes, bytearray, memoryview)):
+            return format_sid(bytes(raw_value))
+        if isinstance(raw_value, str) and raw_value.startswith('S-'):
+            return raw_value
+
+        sid_value = getattr(sidattr, 'value', sidattr)
+        if isinstance(sid_value, (bytes, bytearray, memoryview)):
+            return format_sid(bytes(sid_value))
+        if isinstance(sid_value, str):
+            if sid_value.startswith('S-'):
+                return sid_value
+            # Some servers expose binary SID through a str wrapper in anonymous binds
+            try:
+                return format_sid(sid_value.encode('latin-1'))
+            except (UnicodeEncodeError, ValueError):
+                return sid_value
+        return str(sid_value)
+
 
     #Lookup all computer DNS names to get their IP
     def lookupComputerDnsNames(self):
@@ -343,7 +369,12 @@ class domainDumper():
     def mapGroupsIdsToDns(self):
         dnmap = {}
         for group in self.groups:
-            gid = int(group.objectSid.value.split('-')[-1])
+            sid_value = self.sidToString(group.objectSid)
+            try:
+                gid = int(str(sid_value).split('-')[-1])
+            except ValueError:
+                log_warn('Could not parse group SID %r, skipping group %r' % (sid_value, group.entry_dn))
+                continue
             dnmap[gid] = group.distinguishedName.values[0]
         self.groups_dnmap = dnmap
         return dnmap
@@ -453,15 +484,22 @@ class reportWriter():
         # ldap3 >= 2.6 returns timedelta
         if isinstance(length, timedelta):
             return length.total_seconds() / 86400
-        else:
-            return abs(length) * .0000001 / 86400
+        # Some LDAP servers expose LARGE_INTEGER values as strings/bytes
+        if isinstance(length, (bytes, bytearray, memoryview)):
+            length = bytes(length).decode('ascii', errors='ignore')
+        if isinstance(length, str):
+            length = int(length.strip())
+        return abs(length) * .0000001 / 86400
 
     def nsToMinutes(self, length):
         # ldap3 >= 2.6 returns timedelta
         if isinstance(length, timedelta):
             return length.total_seconds() / 60
-        else:
-            return abs(length) * .0000001 / 60
+        if isinstance(length, (bytes, bytearray, memoryview)):
+            length = bytes(length).decode('ascii', errors='ignore')
+        if isinstance(length, str):
+            length = int(length.strip())
+        return abs(length) * .0000001 / 60
 
     #Parse bitwise flags into a list
     def parseFlags(self, attr, flags_def):
@@ -583,11 +621,18 @@ class reportWriter():
             except ValueError:
                 #Invalid date
                 return '0'
-        # Make sure it's a unicode string
-        if type(value) is bytes:
-            return value.encode('utf8')
+        # Make sure bytes are converted to a printable unicode string
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            raw_value = bytes(value)
+            try:
+                return raw_value.decode('utf8')
+            except UnicodeDecodeError:
+                try:
+                    return raw_value.decode('latin-1')
+                except UnicodeDecodeError:
+                    return repr(raw_value)
         if type(value) is str:
-            return value#.encode('utf8')
+            return value
         if type(value) is int:
             return str(value)
         if value is None:
@@ -634,7 +679,8 @@ class reportWriter():
         if aname == 'lockoutobservationwindow' or  aname == 'lockoutduration':
             return '%.1f minutes' % self.nsToMinutes(att.value)
         if aname == 'objectsid':
-            return '<abbr title="%s">%s</abbr>' % (att.value, att.value.split('-')[-1])
+            sid_value = self.dd.sidToString(att)
+            return '<abbr title="%s">%s</abbr>' % (sid_value, sid_value.split('-')[-1])
         #Special case where the attribute is a CN and it should be made clear its a group
         if aname == 'cn' and formatCnAsGroup:
             return self.formatCnWithGroupLink(att.value)
@@ -922,8 +968,12 @@ def main():
     #Do we really need grouped json files?
     cnf.groupedjson = args.grouped_json
 
-    #Prompt for password if not set
+    # Prompt for password if not set
     authentication = None
+    # Normalize empty --user input to anonymous mode
+    if args.user is not None and args.user.strip() == '':
+        args.user = None
+
     if args.user is not None:
         if args.authtype == 'SIMPLE':
             authentication = 'SIMPLE'
@@ -937,10 +987,14 @@ def main():
     else:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
     # define the server and the connection
-    s = Server(args.host, get_info=ALL)
+    s = Server(args.host.strip(), get_info=ALL)
     log_info('Connecting to host...')
 
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    if args.user is None:
+        # Keep anonymous mode identical to ldap3 defaults (no explicit credentials/auth mode)
+        c = Connection(s)
+    else:
+        c = Connection(s, user=args.user, password=args.password, authentication=authentication)
     log_info('Binding to host')
     # perform the Bind operation
     if not c.bind():
