@@ -18,6 +18,9 @@ dependencies = [
   "ldap3>=2.5,!=2.5.2,!=2.5.0,!=2.6"
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
 [tool.setuptools.packages.find]
 include = ["ldapdomaindump"]
 
