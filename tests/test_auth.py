@@ -73,17 +73,3 @@ def test_anonymous_bind_passes_no_auth_kwargs(mock_server, mock_connection):
     assert 'user' not in kwargs
     assert 'password' not in kwargs
     assert 'authentication' not in kwargs
-
-
-@patch('ldapdomaindump.auth.Connection')
-@patch('ldapdomaindump.auth.Server')
-def test_ntlm_bind_enables_session_security(mock_server, mock_connection):
-    mock_conn = MagicMock()
-    mock_conn.bind.return_value = True
-    mock_connection.return_value = mock_conn
-
-    build_connection(_ns(authtype='NTLM'))
-
-    from ldapdomaindump.auth import ENCRYPT
-    kwargs = mock_connection.call_args.kwargs
-    assert kwargs.get('session_security') == ENCRYPT

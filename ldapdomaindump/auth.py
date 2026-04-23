@@ -6,11 +6,6 @@ Connection to domainDumper.
 """
 from ldap3 import Server, Connection, ALL, NTLM
 
-# ldap3 2.x does not export ENCRYPT; define a sentinel used as the
-# session_security value to request NTLM sign/seal on plain LDAP.
-# Over TLS this is a no-op because the transport already encrypts.
-ENCRYPT = 'ENCRYPT'
-
 
 class AuthError(RuntimeError):
     """Raised when authentication cannot be completed."""
@@ -38,7 +33,6 @@ def _bind_ntlm(server, args):
         user=args.user,
         password=args.password,
         authentication=NTLM,
-        session_security=ENCRYPT,
     )
     _do_bind(conn)
     return conn
