@@ -923,30 +923,23 @@ def main():
     cnf.groupedjson = args.grouped_json
 
     #Prompt for password if not set
-    authentication = None
-    if args.user is not None:
-        if args.authtype == 'SIMPLE':
-            authentication = 'SIMPLE'
-        else:
-            authentication = NTLM
-        if not '\\' in args.user:
-            log_warn('Username must include a domain, use: DOMAIN\\username')
-            sys.exit(1)
-        if args.password is None:
-            args.password = getpass.getpass()
-    else:
-        log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
-    # define the server and the connection
-    s = Server(args.host, get_info=ALL)
-    log_info('Connecting to host...')
-
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
-    log_info('Binding to host')
-    # perform the Bind operation
-    if not c.bind():
-        log_warn('Could not bind with specified credentials')
-        log_warn(c.result)
+    if args.user is not None and '\\' not in args.user:
+        log_warn('Username must include a domain, use: DOMAIN\\username')
         sys.exit(1)
+    if args.user is not None and args.password is None:
+        args.password = getpass.getpass()
+    if args.user is None:
+        log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
+
+    log_info('Connecting to host...')
+    log_info('Binding to host')
+    try:
+        from ldapdomaindump.auth import build_connection, AuthError
+        c = build_connection(args)
+    except AuthError as e:
+        log_warn(str(e))
+        sys.exit(1)
+    s = c.server
     log_success('Bind OK')
     log_info('Starting domain dump')
     #Create domaindumper object
