@@ -58,3 +58,18 @@ def test_failed_bind_raises(mock_server, mock_connection):
     with pytest.raises(RuntimeError) as exc:
         build_connection(_ns())
     assert 'invalidCredentials' in str(exc.value)
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_anonymous_bind_passes_no_auth_kwargs(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = True
+    mock_connection.return_value = mock_conn
+
+    build_connection(_ns(user=None, password=None))
+
+    _, kwargs = mock_connection.call_args
+    assert 'user' not in kwargs
+    assert 'password' not in kwargs
+    assert 'authentication' not in kwargs
