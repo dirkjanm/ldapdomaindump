@@ -908,6 +908,8 @@ def _build_parser():
                            help="Disable TLS certificate validation (insecure, for self-signed DC certs)")
     miscgroup.add_argument("--start-tls", action='store_true', default=False,
                            help="Upgrade plain LDAP to TLS via StartTLS before bind")
+    miscgroup.add_argument("--debug", action='store_true', default=False,
+                           help="Enable verbose debug logging (auth flow, ldap3 internals)")
 
     return parser
 
@@ -953,6 +955,15 @@ def main():
     parser = _build_parser()
     args = parser.parse_args()
     _validate_args(parser, args)
+    if args.debug:
+        import logging
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+        try:
+            from ldap3.utils.log import set_library_log_detail_level, EXTENDED
+            set_library_log_detail_level(EXTENDED)
+        except Exception:
+            pass
     #Create default config
     cnf = domainDumpConfig()
     #Dns lookups?
