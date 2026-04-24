@@ -7,7 +7,7 @@ setup(name='ldapdomaindump',
       url='https://github.com/dirkjanm/ldapdomaindump/',
       packages=['ldapdomaindump'],
       requires_python=">=3.6",
-      install_requires=['dnspython', 'ldap3>=2.5,!=2.5.2,!=2.5.0,!=2.6'],
+      install_requires=['dnspython', 'impacket>=0.9.17', 'ldap3>=2.5,!=2.5.2,!=2.5.0,!=2.6', 'pyasn1>=0.4'],
       package_data={'ldapdomaindump': ['style.css']},
       include_package_data=True,
       entry_points= {

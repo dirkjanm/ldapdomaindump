@@ -1,5 +1,8 @@
 build/
 dist/
-ldapdomaindump.egg-info
 domainlookup.py
 *.pyc
+.pytest_cache/
+__pycache__/
+*.egg-info/
+.venv/

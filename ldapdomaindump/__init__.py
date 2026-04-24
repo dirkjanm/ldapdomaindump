@@ -865,7 +865,7 @@ def log_info(text):
 def log_success(text):
     print('[+] %s' % text)
 
-def main():
+def _build_parser():
     parser = argparse.ArgumentParser(description='Domain information dumper via LDAP. Dumps users/computers/groups and OS/membership information to HTML/JSON/greppable output.')
     parser._optionals.title = "Main options"
     parser._positionals.title = "Required options"
@@ -873,9 +873,22 @@ def main():
     #Main parameters
     #maingroup = parser.add_argument_group("Main options")
     parser.add_argument("host", type=str, metavar='HOSTNAME', help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
-    parser.add_argument("-u", "--user", type=str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
-    parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
-    parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
+    parser.add_argument("-u", "--username", type=str, metavar='USERNAME', help="Username in UPN form: user@domain. For anonymous bind, leave empty.")
+    parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password for authentication. Prompted if not specified and -no-pass not set.")
+    parser.add_argument("-k", "--kerberos", action='store_true', default=False,
+                        help="Use Kerberos authentication (via KRB5CCNAME ccache). Implies --auth-method kerberos.")
+    parser.add_argument("--hashes", type=str, metavar='LMHASH:NTHASH', default=None,
+                        help="NTLM hashes in LM:NT format (LM can be blank). RC4/NT half is also used for Kerberos with --auth-method kerberos.")
+    parser.add_argument("-no-pass", dest='no_pass', action='store_true', default=False,
+                        help="Don't prompt for a password (impacket idiom; use with -k, --hashes, or -aesKey).")
+    parser.add_argument("-aesKey", dest='aesKey', type=str, metavar='HEXKEY', default=None,
+                        help="AES 128 (32 hex) or 256 (64 hex) Kerberos key (camelCase per impacket convention).")
+    parser.add_argument("--auth-method", dest='auth_method', choices=['auto', 'ntlm', 'kerberos'], default='auto',
+                        help="Authentication method (default: auto — try Kerberos if possible, else NTLM).")
+    parser.add_argument("--domain", type=str, metavar='DOMAIN', default=None,
+                        help="Realm, used when username does not embed a realm (user@domain).")
+    parser.add_argument("--ldap-channel-binding", dest='ldap_channel_binding', action='store_true', default=False,
+                        help="Apply EPA channel binding over LDAPS (requires patched ldap3).")
 
     #Output parameters
     outputgroup = parser.add_argument_group("Output options")
@@ -891,8 +904,66 @@ def main():
     miscgroup.add_argument("-r", "--resolve", action='store_true', help="Resolve computer hostnames (might take a while and cause high traffic on large networks)")
     miscgroup.add_argument("-n", "--dns-server", help="Use custom DNS resolver instead of system DNS (try a domain controller IP)")
     miscgroup.add_argument("-m", "--minimal", action='store_true', default=False, help="Only query minimal set of attributes to limit memmory usage")
+    miscgroup.add_argument("--no-tls-verify", action='store_true', default=False,
+                           help="Disable TLS certificate validation (insecure, for self-signed DC certs)")
+    miscgroup.add_argument("--start-tls", action='store_true', default=False,
+                           help="Upgrade plain LDAP to TLS via StartTLS before bind")
+    miscgroup.add_argument("--debug", action='store_true', default=False,
+                           help="Enable verbose debug logging (auth flow, ldap3 internals)")
 
+    return parser
+
+
+def _prompt_password_if_needed(args):
+    """Prompt for a password if one is needed and not supplied."""
+    if args.username is None:
+        return
+    if args.no_pass:
+        return
+    if args.kerberos:
+        return
+    if args.hashes or args.aesKey:
+        return
+    if args.password is None:
+        args.password = getpass.getpass()
+
+
+def _validate_args(parser, args):
+    """Cross-field argparse validation that argparse groups can't express natively."""
+    if args.start_tls and args.host.lower().startswith('ldaps://'):
+        parser.error('--start-tls is incompatible with ldaps:// (connection is already TLS)')
+    if args.hashes is not None and not re.match(r'^[0-9a-fA-F]{0,32}:[0-9a-fA-F]{32}$', args.hashes):
+        parser.error('--hashes must be in LM:NT format (32 hex each, LM may be blank)')
+    if args.aesKey is not None and len(args.aesKey) not in (32, 64):
+        parser.error('-aesKey must be 32 or 64 hex characters (AES128 or AES256)')
+    if args.aesKey is not None:
+        try:
+            int(args.aesKey, 16)
+        except ValueError:
+            parser.error('-aesKey must be 32 or 64 hex characters (AES128 or AES256)')
+    if args.kerberos and args.auth_method == 'ntlm':
+        parser.error('-k requires Kerberos; cannot combine with --auth-method ntlm')
+    if args.kerberos and args.username is None:
+        parser.error('-k requires a username; anonymous Kerberos is not supported')
+    if args.auth_method == 'kerberos' and args.username is None:
+        parser.error('--auth-method kerberos requires a username; anonymous Kerberos is not supported')
+    if args.kerberos and args.auth_method == 'auto':
+        args.auth_method = 'kerberos'
+
+
+def main():
+    parser = _build_parser()
     args = parser.parse_args()
+    _validate_args(parser, args)
+    if args.debug:
+        import logging
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+        try:
+            from ldap3.utils.log import set_library_log_detail_level, EXTENDED
+            set_library_log_detail_level(EXTENDED)
+        except Exception:
+            pass
     #Create default config
     cnf = domainDumpConfig()
     #Dns lookups?
@@ -922,31 +993,19 @@ def main():
     #Do we really need grouped json files?
     cnf.groupedjson = args.grouped_json
 
-    #Prompt for password if not set
-    authentication = None
-    if args.user is not None:
-        if args.authtype == 'SIMPLE':
-            authentication = 'SIMPLE'
-        else:
-            authentication = NTLM
-        if not '\\' in args.user:
-            log_warn('Username must include a domain, use: DOMAIN\\username')
-            sys.exit(1)
-        if args.password is None:
-            args.password = getpass.getpass()
-    else:
+    _prompt_password_if_needed(args)
+    if args.username is None:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
-    # define the server and the connection
-    s = Server(args.host, get_info=ALL)
-    log_info('Connecting to host...')
 
-    c = Connection(s, user=args.user, password=args.password, authentication=authentication)
+    log_info('Connecting to host...')
     log_info('Binding to host')
-    # perform the Bind operation
-    if not c.bind():
-        log_warn('Could not bind with specified credentials')
-        log_warn(c.result)
+    try:
+        from ldapdomaindump.auth import build_connection, AuthError
+        c = build_connection(args)
+    except AuthError as e:
+        log_warn(str(e))
         sys.exit(1)
+    s = c.server
     log_success('Bind OK')
     log_info('Starting domain dump')
     #Create domaindumper object
