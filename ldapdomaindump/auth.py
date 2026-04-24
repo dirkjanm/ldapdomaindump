@@ -40,7 +40,7 @@ def build_connection(args):
     server = _build_server(args)
 
     if args.user is None:
-        return _bind_anonymous(server)
+        return _bind_anonymous(server, args)
 
     authtype = getattr(args, 'authtype', 'NTLM')
     if authtype == 'SIMPLE':
@@ -54,7 +54,9 @@ def _bind_ntlm(server, args):
         user=args.user,
         password=args.password,
         authentication=NTLM,
+        auto_bind=False,
     )
+    _open_and_maybe_start_tls(conn, args)
     _do_bind(conn)
     return conn
 
@@ -65,15 +67,24 @@ def _bind_simple(server, args):
         user=args.user,
         password=args.password,
         authentication=SIMPLE,
+        auto_bind=False,
     )
+    _open_and_maybe_start_tls(conn, args)
     _do_bind(conn)
     return conn
 
 
-def _bind_anonymous(server):
-    conn = Connection(server)
+def _bind_anonymous(server, args):
+    conn = Connection(server, auto_bind=False)
+    _open_and_maybe_start_tls(conn, args)
     _do_bind(conn)
     return conn
+
+
+def _open_and_maybe_start_tls(conn, args):
+    conn.open()
+    if getattr(args, 'start_tls', False):
+        conn.start_tls()
 
 
 STRONGER_AUTH_REQUIRED = 8

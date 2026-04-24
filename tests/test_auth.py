@@ -15,6 +15,7 @@ def _ns(**overrides):
         password='hunter2',
         authtype='NTLM',
         no_tls_verify=False,
+        start_tls=False,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -150,3 +151,31 @@ def test_build_server_plain_ldap_has_no_ssl():
     args = _ns(host='dc.example.local', no_tls_verify=False)
     server = _build_server(args)
     assert server.ssl is False
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_start_tls_called_when_flag_set(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = True
+    mock_connection.return_value = mock_conn
+
+    build_connection(_ns(start_tls=True, no_tls_verify=False))
+
+    mock_conn.open.assert_called_once()
+    mock_conn.start_tls.assert_called_once()
+    # Order: open before start_tls before bind
+    calls = [c[0] for c in mock_conn.method_calls]
+    assert calls.index('open') < calls.index('start_tls') < calls.index('bind')
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_start_tls_not_called_when_flag_unset(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = True
+    mock_connection.return_value = mock_conn
+
+    build_connection(_ns(start_tls=False))
+
+    mock_conn.start_tls.assert_not_called()

@@ -893,12 +893,22 @@ def _build_parser():
     miscgroup.add_argument("-m", "--minimal", action='store_true', default=False, help="Only query minimal set of attributes to limit memmory usage")
     miscgroup.add_argument("--no-tls-verify", action='store_true', default=False,
                            help="Disable TLS certificate validation (insecure, for self-signed DC certs)")
+    miscgroup.add_argument("--start-tls", action='store_true', default=False,
+                           help="Upgrade plain LDAP to TLS via StartTLS before bind")
 
     return parser
 
 
+def _validate_args(parser, args):
+    """Cross-field argparse validation that argparse groups can't express natively."""
+    if args.start_tls and args.host.lower().startswith('ldaps://'):
+        parser.error('--start-tls is incompatible with ldaps:// (connection is already TLS)')
+
+
 def main():
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args = parser.parse_args()
+    _validate_args(parser, args)
     #Create default config
     cnf = domainDumpConfig()
     #Dns lookups?
