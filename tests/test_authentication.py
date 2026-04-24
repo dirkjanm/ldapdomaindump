@@ -284,3 +284,50 @@ def test_ldap_kerberos_returns_false_on_nonzero_result(
     ok = auth.ldap_kerberos(fake_conn, 'dc.corp.local')
     assert ok is False
     fake_conn.refresh_server_info.assert_not_called()
+
+
+def test_compute_channel_bindings_no_tls_returns_none():
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='kerberos', ldap_channel_binding=False)
+    conn = MagicMock()
+    conn.socket.getpeercert.side_effect = AttributeError
+    assert auth._compute_channel_bindings(conn) is None
+
+
+def test_compute_channel_bindings_empty_peercert_returns_none():
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='kerberos', ldap_channel_binding=False)
+    conn = MagicMock()
+    conn.socket.getpeercert.return_value = b''
+    assert auth._compute_channel_bindings(conn) is None
+
+
+def test_compute_channel_bindings_with_peercert_produces_16_byte_md5():
+    """Feed a real DER cert through the computation — result is md5 = 16 bytes."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.primitives import hashes as c_hashes, serialization
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+    import datetime as _dt
+
+    # Generate a throwaway self-signed cert
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'test')])
+    cert = (x509.CertificateBuilder()
+            .subject_name(subject).issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(1)
+            .not_valid_before(_dt.datetime.utcnow())
+            .not_valid_after(_dt.datetime.utcnow() + _dt.timedelta(days=1))
+            .sign(key, c_hashes.SHA256()))
+    der = cert.public_bytes(serialization.Encoding.DER)
+
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='kerberos', ldap_channel_binding=False)
+    conn = MagicMock()
+    conn.socket.getpeercert.return_value = der
+
+    bindings = auth._compute_channel_bindings(conn)
+    assert bindings is not None
+    assert isinstance(bindings, bytes)
+    assert len(bindings) == 16

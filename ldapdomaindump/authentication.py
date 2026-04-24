@@ -220,9 +220,9 @@ class ADAuthentication(object):
         return response['result'] == 0
 
     def _compute_channel_bindings(self, connection):
-        """Compute GSS channel-binding MD5 for TLS server-end-point (RFC 5929).
+        """RFC 5929 tls-server-end-point channel bindings → GSS MD5.
 
-        Returns bytes (16) or None if no TLS / no peercert.
+        Returns 16-byte MD5 or None if no TLS / no peercert.
         """
         try:
             peercert = connection.socket.getpeercert(binary_form=True)
@@ -230,4 +230,23 @@ class ADAuthentication(object):
             return None
         if not peercert:
             return None
-        return b''  # full RFC 5929 computation added in the next task
+
+        peer_certificate = x509.load_der_x509_certificate(peercert, default_backend())
+        peer_hash_algo = peer_certificate.signature_hash_algorithm
+
+        rfc5929_weak = (hashes.MD5, hashes.SHA1)
+        if isinstance(peer_hash_algo, rfc5929_weak):
+            digest = hashes.Hash(hashes.SHA256(), default_backend())
+        else:
+            digest = hashes.Hash(peer_hash_algo, default_backend())
+        digest.update(peercert)
+        peer_digest = digest.finalize()
+
+        initiator_address = b'\x00' * 8
+        acceptor_address = b'\x00' * 8
+        application_data_raw = b'tls-server-end-point:' + peer_digest
+        application_data = len(application_data_raw).to_bytes(4, byteorder='little', signed=False)
+        application_data += application_data_raw
+
+        channel_binding_struct = initiator_address + acceptor_address + application_data
+        return md5(channel_binding_struct).digest()
