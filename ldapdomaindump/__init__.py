@@ -916,6 +916,15 @@ def _validate_args(parser, args):
     """Cross-field argparse validation that argparse groups can't express natively."""
     if args.start_tls and args.host.lower().startswith('ldaps://'):
         parser.error('--start-tls is incompatible with ldaps:// (connection is already TLS)')
+    if args.hashes is not None and not re.match(r'^[0-9a-fA-F]{0,32}:[0-9a-fA-F]{32}$', args.hashes):
+        parser.error('--hashes must be in LM:NT format (32 hex each, LM may be blank)')
+    if args.aesKey is not None and len(args.aesKey) not in (32, 64):
+        parser.error('-aesKey must be 32 or 64 hex characters (AES128 or AES256)')
+    if args.aesKey is not None:
+        try:
+            int(args.aesKey, 16)
+        except ValueError:
+            parser.error('-aesKey must be 32 or 64 hex characters (AES128 or AES256)')
 
 
 def main():

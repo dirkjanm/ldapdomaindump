@@ -77,3 +77,46 @@ def test_at_authtype_flag_removed():
     parser = _build_parser()
     with pytest.raises(SystemExit):
         parser.parse_args(['-at', 'NTLM', 'dc.example.local'])
+
+
+def test_hashes_malformed_rejected(capsys):
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['--hashes', 'notahash', 'dc.example.local'])
+    with pytest.raises(SystemExit):
+        _validate_args(parser, args)
+    err = capsys.readouterr().err
+    assert '--hashes' in err
+    assert 'LM:NT' in err
+
+
+def test_hashes_valid_passes():
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['--hashes', 'aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0', 'dc.example.local'])
+    _validate_args(parser, args)  # no exit
+
+
+def test_aeskey_wrong_length_rejected(capsys):
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['-aesKey', 'abcd', 'dc.example.local'])
+    with pytest.raises(SystemExit):
+        _validate_args(parser, args)
+    err = capsys.readouterr().err
+    assert 'aesKey' in err
+    assert '32 or 64 hex' in err
+
+
+def test_aeskey_aes128_accepted():
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['-aesKey', 'a' * 32, 'dc.example.local'])
+    _validate_args(parser, args)
+
+
+def test_aeskey_aes256_accepted():
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['-aesKey', 'b' * 64, 'dc.example.local'])
+    _validate_args(parser, args)
