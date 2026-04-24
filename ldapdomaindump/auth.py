@@ -82,9 +82,14 @@ def _bind_anonymous(server, args):
 
 
 def _open_and_maybe_start_tls(conn, args):
-    conn.open()
+    if not conn.open():
+        raise AuthError('Failed to open connection to %s' % conn.server.host)
     if getattr(args, 'start_tls', False):
-        conn.start_tls()
+        if not conn.start_tls():
+            raise AuthError(
+                'StartTLS upgrade failed. '
+                'The server may not support StartTLS on this port.'
+            )
 
 
 STRONGER_AUTH_REQUIRED = 8

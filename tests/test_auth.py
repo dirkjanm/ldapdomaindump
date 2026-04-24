@@ -179,3 +179,33 @@ def test_start_tls_not_called_when_flag_unset(mock_server, mock_connection):
     build_connection(_ns(start_tls=False))
 
     mock_conn.start_tls.assert_not_called()
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_start_tls_failure_raises(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.open.return_value = True
+    mock_conn.start_tls.return_value = False
+    mock_connection.return_value = mock_conn
+
+    from ldapdomaindump.auth import AuthError
+    with pytest.raises(AuthError) as exc:
+        build_connection(_ns(start_tls=True))
+    assert 'StartTLS' in str(exc.value)
+    mock_conn.bind.assert_not_called()
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_open_failure_raises(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.open.return_value = False
+    mock_connection.return_value = mock_conn
+
+    from ldapdomaindump.auth import AuthError
+    with pytest.raises(AuthError) as exc:
+        build_connection(_ns())
+    assert 'open' in str(exc.value).lower()
+    mock_conn.start_tls.assert_not_called()
+    mock_conn.bind.assert_not_called()
