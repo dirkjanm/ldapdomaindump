@@ -1,9 +1,10 @@
 import argparse
+import ssl
 import pytest
 from unittest.mock import patch, MagicMock
 
 from ldap3 import NTLM
-from ldapdomaindump.auth import build_connection
+from ldapdomaindump.auth import build_connection, _build_server
 
 
 def _ns(**overrides):
@@ -13,6 +14,7 @@ def _ns(**overrides):
         user='EXAMPLE\\alice',
         password='hunter2',
         authtype='NTLM',
+        no_tls_verify=False,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -125,4 +127,25 @@ def test_ntlm_bind_strongerauthrequired_gives_actionable_error(mock_server, mock
     assert 'does not support NTLM sign/seal' in msg
     assert '-k' in msg
     assert 'ldaps://' in msg
-    assert '--start-tls' in msg
+
+
+def test_build_server_defaults_to_validating_tls():
+    args = _ns(host='ldaps://dc.example.local', no_tls_verify=False)
+    server = _build_server(args)
+    assert server.ssl is True
+    assert server.tls is not None
+    assert server.tls.validate == ssl.CERT_REQUIRED
+
+
+def test_build_server_no_tls_verify_disables_validation(capfd):
+    args = _ns(host='ldaps://dc.example.local', no_tls_verify=True)
+    server = _build_server(args)
+    assert server.tls.validate == ssl.CERT_NONE
+    out, err = capfd.readouterr()
+    assert 'TLS certificate validation disabled' in (out + err)
+
+
+def test_build_server_plain_ldap_has_no_ssl():
+    args = _ns(host='dc.example.local', no_tls_verify=False)
+    server = _build_server(args)
+    assert server.ssl is False

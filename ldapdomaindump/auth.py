@@ -4,11 +4,32 @@ All LDAP bind logic lives here behind build_connection(args). main() is
 expected to call build_connection() once and hand the resulting bound
 Connection to domainDumper.
 """
-from ldap3 import Server, Connection, ALL, NTLM, SIMPLE
+import ssl
+import sys
+
+from ldap3 import Server, Connection, ALL, NTLM, SIMPLE, Tls
 
 
 class AuthError(RuntimeError):
     """Raised when authentication cannot be completed."""
+
+
+def _build_server(args):
+    """Build an ldap3.Server with appropriate TLS settings.
+
+    Detects ldaps:// scheme and ssl from the host string. If the user passed
+    --no-tls-verify, disable certificate validation and warn loudly.
+    """
+    validate = ssl.CERT_NONE if getattr(args, 'no_tls_verify', False) else ssl.CERT_REQUIRED
+    if validate == ssl.CERT_NONE:
+        print(
+            '[!] TLS certificate validation disabled. '
+            'Connection is encrypted but not authenticated.',
+            file=sys.stderr,
+        )
+    tls = Tls(validate=validate)
+    use_ssl = args.host.lower().startswith('ldaps://')
+    return Server(args.host, get_info=ALL, use_ssl=use_ssl, tls=tls)
 
 
 def build_connection(args):
@@ -16,7 +37,7 @@ def build_connection(args):
 
     Returns the bound Connection. Raises AuthError on any failure.
     """
-    server = Server(args.host, get_info=ALL)
+    server = _build_server(args)
 
     if args.user is None:
         return _bind_anonymous(server)
