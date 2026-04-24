@@ -162,3 +162,44 @@ def test_kerberos_flag_implies_auth_method_kerberos():
     assert args.auth_method == 'auto'  # before validation
     _validate_args(parser, args)
     assert args.auth_method == 'kerberos'  # validation flipped it
+
+
+def test_no_pass_suppresses_getpass(monkeypatch):
+    import ldapdomaindump as ldd
+    called = {'n': 0}
+
+    def fake_getpass(*a, **kw):
+        called['n'] += 1
+        return 'X'
+
+    monkeypatch.setattr('getpass.getpass', fake_getpass)
+    parser = _build_parser()
+    args = parser.parse_args(['-u', 'alice@corp.local', '-no-pass', 'dc.corp.local'])
+    ldd._prompt_password_if_needed(args)
+    assert called['n'] == 0
+
+
+def test_prompt_password_when_user_given_and_no_password(monkeypatch):
+    import ldapdomaindump as ldd
+    called = {'n': 0}
+
+    def fake_getpass(*a, **kw):
+        called['n'] += 1
+        return 'X'
+
+    monkeypatch.setattr('getpass.getpass', fake_getpass)
+    parser = _build_parser()
+    args = parser.parse_args(['-u', 'alice@corp.local', 'dc.corp.local'])
+    ldd._prompt_password_if_needed(args)
+    assert called['n'] == 1
+    assert args.password == 'X'
+
+
+def test_no_prompt_when_kerberos(monkeypatch):
+    import ldapdomaindump as ldd
+    called = {'n': 0}
+    monkeypatch.setattr('getpass.getpass', lambda *a, **kw: called.__setitem__('n', called['n'] + 1) or 'X')
+    parser = _build_parser()
+    args = parser.parse_args(['-u', 'alice@corp.local', '-k', 'dc.corp.local'])
+    ldd._prompt_password_if_needed(args)
+    assert called['n'] == 0

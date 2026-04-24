@@ -1,25 +1,26 @@
-"""Authentication helpers for ldapdomaindump.
+"""Authentication dispatcher for ldapdomaindump.
 
-All LDAP bind logic lives here behind build_connection(args). main() is
-expected to call build_connection() once and hand the resulting bound
-Connection to domainDumper.
+Parses argparse output into an ADAuthentication instance and returns a bound
+ldap3.Connection via `build_connection(args)`.
 """
+import re
 import ssl
 import sys
 
-from ldap3 import Server, Connection, ALL, NTLM, SIMPLE, Tls
+from ldap3 import ALL, Server, Tls
+
+from ldapdomaindump.authentication import ADAuthentication
 
 
 class AuthError(RuntimeError):
     """Raised when authentication cannot be completed."""
 
 
-def _build_server(args):
-    """Build an ldap3.Server with appropriate TLS settings.
+_IP_RE = re.compile(r'^\d{1,3}(\.\d{1,3}){3}$')
 
-    Detects ldaps:// scheme and ssl from the host string. If the user passed
-    --no-tls-verify, disable certificate validation and warn loudly.
-    """
+
+def _build_server(args):
+    """Build an ldap3.Server with TLS settings derived from args.host."""
     validate = ssl.CERT_NONE if getattr(args, 'no_tls_verify', False) else ssl.CERT_REQUIRED
     if validate == ssl.CERT_NONE:
         print(
@@ -32,88 +33,83 @@ def _build_server(args):
     return Server(args.host, get_info=ALL, use_ssl=use_ssl, tls=tls)
 
 
-def build_connection(args):
-    """Build and bind an ldap3.Connection from parsed CLI args.
+def _extract_hostname(host):
+    """Strip ldap[s]:// scheme and any trailing :port, return bare hostname."""
+    h = host
+    if '://' in h:
+        h = h.split('://', 1)[1]
+    if ':' in h:
+        h = h.rsplit(':', 1)[0]
+    return h
 
-    Returns the bound Connection. Raises AuthError on any failure.
-    """
+
+def _parse_username_and_domain(args):
+    """Return (raw_username_for_ADAuthentication, domain)."""
+    username = args.username
+    if username is None:
+        return None, args.domain or ''
+    if '\\' in username:
+        raise AuthError(
+            'username must be in UPN format (user@domain), or use --domain. '
+            'Down-level DOMAIN\\user is no longer supported.')
+    if '@' in username:
+        return username, username.rsplit('@', 1)[1]
+    if args.domain:
+        return username, args.domain
+    raise AuthError('username must include a realm (user@domain) or use --domain')
+
+
+def _kerberos_attempt_anticipated(args):
+    """Will build_connection attempt Kerberos at all?"""
+    if args.username is None:
+        return False
+    if args.auth_method == 'ntlm':
+        return False
+    if args.auth_method == 'kerberos':
+        return True
+    # auto: attempt Kerberos if any credential source is present
+    import os
+    return bool(args.kerberos
+                or os.getenv('KRB5CCNAME')
+                or args.password
+                or args.hashes
+                or args.aesKey)
+
+
+def build_connection(args):
+    """Build and bind an ldap3.Connection from parsed CLI args. Raises AuthError."""
+    username, domain = _parse_username_and_domain(args)
+
+    hostname = _extract_hostname(args.host)
+
+    if _kerberos_attempt_anticipated(args) and _IP_RE.match(hostname):
+        raise AuthError(
+            'host %s looks like an IP but Kerberos requires a hostname (FQDN). '
+            'Use -n/--dns-server to specify a DNS server IP if the hostname does '
+            'not resolve on your default nameserver.' % hostname)
+
     server = _build_server(args)
 
-    if args.user is None:
-        return _bind_anonymous(server, args)
+    lm_hash = ''
+    nt_hash = ''
+    if args.hashes:
+        lm_part, nt_part = args.hashes.split(':', 1)
+        lm_hash = lm_part
+        nt_hash = nt_part
 
-    authtype = getattr(args, 'authtype', 'NTLM')
-    if authtype == 'SIMPLE':
-        return _bind_simple(server, args)
-    return _bind_ntlm(server, args)
-
-
-def _bind_ntlm(server, args):
-    conn = Connection(
-        server,
-        user=args.user,
-        password=args.password,
-        authentication=NTLM,
-        auto_bind=False,
+    auth = ADAuthentication(
+        username=username or '',
+        password=args.password or '',
+        domain=domain,
+        auth_method=args.auth_method,
+        ldap_channel_binding=args.ldap_channel_binding,
+        lm_hash=lm_hash,
+        nt_hash=nt_hash,
+        aeskey=args.aesKey or '',
+        use_ccache=bool(args.kerberos),
     )
-    _open_and_maybe_start_tls(conn, args)
-    _do_bind(conn)
-    return conn
+    auth.set_kdc(hostname)
+    if args.aesKey:
+        auth.set_aeskey(args.aesKey)
 
-
-def _bind_simple(server, args):
-    conn = Connection(
-        server,
-        user=args.user,
-        password=args.password,
-        authentication=SIMPLE,
-        auto_bind=False,
-    )
-    _open_and_maybe_start_tls(conn, args)
-    _do_bind(conn)
-    return conn
-
-
-def _bind_anonymous(server, args):
-    conn = Connection(server, auto_bind=False)
-    _open_and_maybe_start_tls(conn, args)
-    _do_bind(conn)
-    return conn
-
-
-def _open_and_maybe_start_tls(conn, args):
-    if not conn.open():
-        raise AuthError('Failed to open connection to %s' % conn.server.host)
-    if getattr(args, 'start_tls', False):
-        if not conn.start_tls():
-            raise AuthError(
-                'StartTLS upgrade failed. '
-                'The server may not support StartTLS on this port.'
-            )
-
-
-STRONGER_AUTH_REQUIRED = 8
-
-_SIMPLE_SIGNING_HINT = (
-    "SIMPLE bind rejected: server requires signing, and SIMPLE binds cannot "
-    "negotiate signing. Use -k (Kerberos, which signs over plain LDAP), or "
-    "use ldaps://<host> if reachable, or pass --start-tls."
-)
-
-_NTLM_SIGNING_HINT = (
-    "NTLM bind rejected: server requires signing, and the installed ldap3 "
-    "does not support NTLM sign/seal. Use -k (Kerberos), or use ldaps://<host> "
-    "if reachable, or pass --start-tls."
-)
-
-
-def _do_bind(conn):
-    if conn.bind():
-        return
-    result = conn.result or {}
-    if result.get('result') == STRONGER_AUTH_REQUIRED:
-        if conn.authentication == SIMPLE:
-            raise AuthError(_SIMPLE_SIGNING_HINT)
-        if conn.authentication == NTLM:
-            raise AuthError(_NTLM_SIGNING_HINT)
-    raise AuthError('Bind failed: %s' % result)
+    return auth.authenticate(server, hostname)

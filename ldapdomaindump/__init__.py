@@ -912,6 +912,20 @@ def _build_parser():
     return parser
 
 
+def _prompt_password_if_needed(args):
+    """Prompt for a password if one is needed and not supplied."""
+    if args.username is None:
+        return
+    if args.no_pass:
+        return
+    if args.kerberos:
+        return
+    if args.hashes or args.aesKey:
+        return
+    if args.password is None:
+        args.password = getpass.getpass()
+
+
 def _validate_args(parser, args):
     """Cross-field argparse validation that argparse groups can't express natively."""
     if args.start_tls and args.host.lower().startswith('ldaps://'):
@@ -968,13 +982,8 @@ def main():
     #Do we really need grouped json files?
     cnf.groupedjson = args.grouped_json
 
-    #Prompt for password if not set
-    if args.user is not None and '\\' not in args.user:
-        log_warn('Username must include a domain, use: DOMAIN\\username')
-        sys.exit(1)
-    if args.user is not None and args.password is None:
-        args.password = getpass.getpass()
-    if args.user is None:
+    _prompt_password_if_needed(args)
+    if args.username is None:
         log_info('Connecting as anonymous user, dumping will probably fail. Consider specifying a username/password to login with')
 
     log_info('Connecting to host...')
