@@ -68,3 +68,40 @@ class ADAuthentication(object):
         self.kdc = kdc
         if self.userdomain == self.domain:
             self.userdomain_kdc = kdc
+
+    def load_ccache(self):
+        """Load TGT from a Kerberos credential cache file ($KRB5CCNAME)."""
+        krb5cc = os.getenv('KRB5CCNAME')
+        if krb5cc is None:
+            try:
+                krb5cc = '/tmp/krb5cc_%u' % os.getuid()
+            except AttributeError:
+                krb5cc = 'nonexistingfile'
+
+        if not os.path.isfile(krb5cc):
+            log.debug('No Kerberos credential cache file found at %s', krb5cc)
+            return False
+
+        log.debug('Using kerberos credential cache: %s', krb5cc)
+        ccache = CCache.loadFile(krb5cc)
+        principal = 'krbtgt/%s@%s' % (self.domain.upper(), self.domain.upper())
+        creds = ccache.getCredential(principal, anySPN=False)
+        if creds is None:
+            log.debug('No valid credentials found in cache for %s', principal)
+            return False
+
+        tgt_dict = creds.toTGT()
+        self.tgt = tgt_dict
+
+        # Verify ticket principal matches supplied username
+        tgt_bytes = tgt_dict['KDC_REP']
+        decoded_tgt = decoder.decode(tgt_bytes, asn1Spec=AS_REP())[0]
+        tgt_principal = Principal()
+        tgt_principal.from_asn1(decoded_tgt, 'crealm', 'cname')
+        expected = '%s@%s' % (self.username.lower(), self.domain.upper())
+        if expected.upper() != str(tgt_principal).upper():
+            log.warning('Username in ccache does not match supplied username: %s != %s',
+                        tgt_principal, expected)
+            return False
+        log.info('Found TGT with correct principal in ccache')
+        return True
