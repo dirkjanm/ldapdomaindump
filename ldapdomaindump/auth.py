@@ -55,6 +55,28 @@ def _bind_anonymous(server):
     return conn
 
 
+STRONGER_AUTH_REQUIRED = 8
+
+_SIMPLE_SIGNING_HINT = (
+    "SIMPLE bind rejected: server requires signing, and SIMPLE binds cannot "
+    "negotiate signing. Use -k (Kerberos, which signs over plain LDAP), or "
+    "use ldaps://<host> if reachable, or pass --start-tls."
+)
+
+_NTLM_SIGNING_HINT = (
+    "NTLM bind rejected: server requires signing, and the installed ldap3 "
+    "does not support NTLM sign/seal. Use -k (Kerberos), or use ldaps://<host> "
+    "if reachable, or pass --start-tls."
+)
+
+
 def _do_bind(conn):
-    if not conn.bind():
-        raise AuthError('Bind failed: %s' % conn.result)
+    if conn.bind():
+        return
+    result = conn.result or {}
+    if result.get('result') == STRONGER_AUTH_REQUIRED:
+        if conn.authentication == 'SIMPLE':
+            raise AuthError(_SIMPLE_SIGNING_HINT)
+        if conn.authentication == NTLM:
+            raise AuthError(_NTLM_SIGNING_HINT)
+    raise AuthError('Bind failed: %s' % result)

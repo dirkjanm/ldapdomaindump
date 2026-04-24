@@ -2,6 +2,7 @@ import argparse
 import pytest
 from unittest.mock import patch, MagicMock
 
+from ldap3 import NTLM
 from ldapdomaindump.auth import build_connection
 
 
@@ -53,10 +54,13 @@ def test_failed_bind_raises(mock_server, mock_connection):
     mock_conn = MagicMock()
     mock_conn.bind.return_value = False
     mock_conn.result = {'result': 49, 'description': 'invalidCredentials'}
+    mock_conn.authentication = NTLM
     mock_connection.return_value = mock_conn
 
-    with pytest.raises(RuntimeError) as exc:
+    from ldapdomaindump.auth import AuthError
+    with pytest.raises(AuthError) as exc:
         build_connection(_ns())
+    assert 'Bind failed' in str(exc.value)
     assert 'invalidCredentials' in str(exc.value)
 
 
@@ -73,3 +77,52 @@ def test_anonymous_bind_passes_no_auth_kwargs(mock_server, mock_connection):
     assert 'user' not in kwargs
     assert 'password' not in kwargs
     assert 'authentication' not in kwargs
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_simple_bind_strongerauthrequired_gives_actionable_error(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = False
+    mock_conn.result = {
+        'result': 8,
+        'description': 'strongerAuthRequired',
+        'message': '00002028: LdapErr: ...',
+    }
+    mock_conn.authentication = 'SIMPLE'
+    mock_connection.return_value = mock_conn
+
+    from ldapdomaindump.auth import AuthError
+    with pytest.raises(AuthError) as exc:
+        build_connection(_ns(authtype='SIMPLE'))
+
+    msg = str(exc.value)
+    assert 'SIMPLE bind rejected' in msg
+    assert '-k' in msg
+    assert 'ldaps://' in msg
+    assert '--start-tls' in msg
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_ntlm_bind_strongerauthrequired_gives_actionable_error(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = False
+    mock_conn.result = {
+        'result': 8,
+        'description': 'strongerAuthRequired',
+        'message': '00002028: LdapErr: ...',
+    }
+    mock_conn.authentication = NTLM
+    mock_connection.return_value = mock_conn
+
+    from ldapdomaindump.auth import AuthError
+    with pytest.raises(AuthError) as exc:
+        build_connection(_ns(authtype='NTLM'))
+
+    msg = str(exc.value)
+    assert 'NTLM bind rejected' in msg
+    assert 'does not support NTLM sign/seal' in msg
+    assert '-k' in msg
+    assert 'ldaps://' in msg
+    assert '--start-tls' in msg
