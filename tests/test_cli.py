@@ -120,3 +120,45 @@ def test_aeskey_aes256_accepted():
     parser = _build_parser()
     args = parser.parse_args(['-aesKey', 'b' * 64, 'dc.example.local'])
     _validate_args(parser, args)
+
+
+def test_kerberos_with_auth_method_ntlm_rejected(capsys):
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['-k', '--auth-method', 'ntlm', '-u', 'user@corp', 'dc.example.local'])
+    with pytest.raises(SystemExit):
+        _validate_args(parser, args)
+    err = capsys.readouterr().err
+    assert '-k' in err
+    assert 'ntlm' in err
+
+
+def test_anonymous_with_kerberos_rejected(capsys):
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['--auth-method', 'kerberos', 'dc.example.local'])
+    with pytest.raises(SystemExit):
+        _validate_args(parser, args)
+    err = capsys.readouterr().err
+    assert 'kerberos' in err
+    assert 'username' in err
+
+
+def test_anonymous_with_k_flag_rejected(capsys):
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['-k', 'dc.example.local'])
+    with pytest.raises(SystemExit):
+        _validate_args(parser, args)
+    err = capsys.readouterr().err
+    assert '-k' in err
+    assert 'username' in err
+
+
+def test_kerberos_flag_implies_auth_method_kerberos():
+    from ldapdomaindump import _validate_args
+    parser = _build_parser()
+    args = parser.parse_args(['-k', '-u', 'user@corp', 'dc.example.local'])
+    assert args.auth_method == 'auto'  # before validation
+    _validate_args(parser, args)
+    assert args.auth_method == 'kerberos'  # validation flipped it

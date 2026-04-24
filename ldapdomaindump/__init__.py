@@ -925,6 +925,14 @@ def _validate_args(parser, args):
             int(args.aesKey, 16)
         except ValueError:
             parser.error('-aesKey must be 32 or 64 hex characters (AES128 or AES256)')
+    if args.kerberos and args.auth_method == 'ntlm':
+        parser.error('-k requires Kerberos; cannot combine with --auth-method ntlm')
+    if args.kerberos and args.username is None:
+        parser.error('-k requires a username; anonymous Kerberos is not supported')
+    if args.auth_method == 'kerberos' and args.username is None:
+        parser.error('--auth-method kerberos requires a username; anonymous Kerberos is not supported')
+    if args.kerberos and args.auth_method == 'auto':
+        args.auth_method = 'kerberos'
 
 
 def main():
