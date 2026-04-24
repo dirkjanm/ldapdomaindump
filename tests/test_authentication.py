@@ -1,6 +1,7 @@
 import pytest
 from binascii import unhexlify
 from ldapdomaindump.authentication import ADAuthentication
+from ldap3.core.results import RESULT_STRONGER_AUTH_REQUIRED
 
 
 def test_init_splits_upn_username():
@@ -331,3 +332,108 @@ def test_compute_channel_bindings_with_peercert_produces_16_byte_md5():
     assert bindings is not None
     assert isinstance(bindings, bytes)
     assert len(bindings) == 16
+
+
+def test_kerberos_usable_needs_username():
+    auth = ADAuthentication(username='', password='pw', domain='corp.local',
+                            auth_method='auto', ldap_channel_binding=False)
+    assert auth._kerberos_usable() is False
+
+
+def test_kerberos_usable_with_password():
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='auto', ldap_channel_binding=False)
+    assert auth._kerberos_usable() is True
+
+
+def test_kerberos_usable_with_ccache():
+    auth = ADAuthentication(username='alice', password='', domain='corp.local',
+                            auth_method='auto', ldap_channel_binding=False,
+                            use_ccache=True)
+    assert auth._kerberos_usable() is True
+
+
+def test_kerberos_forced_true_when_use_ccache():
+    auth = ADAuthentication(username='alice', password='', domain='corp.local',
+                            auth_method='auto', ldap_channel_binding=False,
+                            use_ccache=True)
+    assert auth._kerberos_forced() is True
+
+
+def test_kerberos_forced_false_otherwise():
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='auto', ldap_channel_binding=False)
+    assert auth._kerberos_forced() is False
+
+
+@patch('ldapdomaindump.authentication.Connection')
+def test_authenticate_anonymous(mock_conn_cls):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = True
+    mock_conn_cls.return_value = mock_conn
+
+    auth = ADAuthentication(username='', password='', domain='corp.local',
+                            auth_method='auto', ldap_channel_binding=False)
+    server = MagicMock()
+    result = auth.authenticate(server, 'dc.corp.local')
+    assert result is mock_conn
+    # Anonymous bind: Connection called with only server positional
+    mock_conn_cls.assert_called_once_with(server)
+
+
+@patch('ldapdomaindump.authentication.Connection')
+def test_authenticate_ntlm_path(mock_conn_cls):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = True
+    mock_conn_cls.return_value = mock_conn
+
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='ntlm', ldap_channel_binding=False)
+    server = MagicMock()
+    auth.authenticate(server, 'dc.corp.local')
+
+    _, kwargs = mock_conn_cls.call_args
+    assert kwargs['user'] == 'corp.local\\alice'
+    assert kwargs['password'] == 'pw'
+    from ldap3 import NTLM
+    assert kwargs['authentication'] == NTLM
+    assert 'channel_binding' not in kwargs
+
+
+@patch('ldapdomaindump.authentication.Connection')
+def test_authenticate_ntlm_strongerauthrequired_raises(mock_conn_cls):
+    from ldapdomaindump.auth import AuthError
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = False
+    mock_conn.result = {'result': RESULT_STRONGER_AUTH_REQUIRED}
+    mock_conn_cls.return_value = mock_conn
+
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='ntlm', ldap_channel_binding=False)
+    with pytest.raises(AuthError) as exc:
+        auth.authenticate(MagicMock(), 'dc.corp.local')
+    assert 'NTLM bind rejected' in str(exc.value)
+
+
+@patch('ldapdomaindump.authentication.Connection')
+def test_authenticate_ldap_channel_binding_missing_ldap3_attr_raises(mock_conn_cls, monkeypatch):
+    from ldapdomaindump.auth import AuthError
+    # Simulate ldap3 without TLS_CHANNEL_BINDING
+    monkeypatch.delattr('ldapdomaindump.authentication.ldap3.TLS_CHANNEL_BINDING', raising=False)
+
+    auth = ADAuthentication(username='alice', password='pw', domain='corp.local',
+                            auth_method='ntlm', ldap_channel_binding=True)
+    with pytest.raises(AuthError) as exc:
+        auth.authenticate(MagicMock(), 'dc.corp.local')
+    assert 'patched ldap3' in str(exc.value)
+
+
+def test_authenticate_kerberos_branch_falls_through_is_bug():
+    # Safety: if auth_method == 'kerberos' and _kerberos_usable() is False,
+    # validation should have already failed — but the class should still raise
+    # rather than continue to NTLM.
+    from ldapdomaindump.auth import AuthError
+    auth = ADAuthentication(username='', password='', domain='corp.local',
+                            auth_method='kerberos', ldap_channel_binding=False)
+    with pytest.raises(AuthError):
+        auth.authenticate(MagicMock(), 'dc.corp.local')

@@ -250,3 +250,88 @@ class ADAuthentication(object):
 
         channel_binding_struct = initiator_address + acceptor_address + application_data
         return md5(channel_binding_struct).digest()
+
+    def _kerberos_usable(self):
+        if not self.username:
+            return False
+        if self.use_ccache:
+            return True
+        if os.getenv('KRB5CCNAME'):
+            return True
+        return bool(self.password or self.nt_hash or self.aeskey)
+
+    def _kerberos_forced(self):
+        """Stricter than BH.py: -k means 'really do Kerberos, do not fall back'."""
+        return self.use_ccache
+
+    def _ensure_tgt(self):
+        """Populate self.tgt via ccache or AS-REQ. Raises on failure."""
+        # Deferred import to avoid circular import with auth.AuthError
+        from ldapdomaindump.auth import AuthError
+        if self.use_ccache:
+            if not self.load_ccache():
+                raise AuthError('no Kerberos credential cache found, specify KRB5CCNAME')
+            return
+        self.get_tgt()
+        if self.tgt is None:
+            raise AuthError('Kerberos pre-auth failed and auto-fallback did not populate TGT')
+
+    def _ntlm_login(self):
+        return '%s\\%s' % (self.userdomain, self.username) if self.username else None
+
+    def authenticate(self, server, hostname):
+        """Orchestrate auth. Returns a bound ldap3.Connection or raises AuthError."""
+        from ldapdomaindump.auth import AuthError
+
+        # Kerberos first (if allowed and feasible)
+        if self.auth_method != 'ntlm' and self._kerberos_usable():
+            try:
+                self._ensure_tgt()
+                conn = Connection(server, authentication=SASL, sasl_mechanism=KERBEROS)
+                ok = self.ldap_kerberos(conn, hostname)
+                if not ok:
+                    raise AuthError('Kerberos SASL bind rejected by server')
+                return conn
+            except AuthError:
+                if self.auth_method == 'kerberos' or self._kerberos_forced():
+                    raise
+                log.warning('Kerberos failed; falling back to NTLM')
+                self.tgt = None
+            except Exception as exc:
+                if self.auth_method == 'kerberos' or self._kerberos_forced():
+                    raise AuthError('Kerberos authentication failed: %s' % exc) from exc
+                log.warning('Kerberos failed (%s); falling back to NTLM', exc)
+                self.tgt = None
+
+        # Anonymous or NTLM
+        if self.auth_method == 'kerberos':
+            raise AuthError('Kerberos branch fell through unexpectedly '
+                            '(username missing or no credentials).')
+
+        channel_binding_kwargs = {}
+        if self.ldap_channel_binding:
+            if not hasattr(ldap3, 'TLS_CHANNEL_BINDING'):
+                raise AuthError(
+                    'To use LDAP channel binding, install the patched ldap3 module: '
+                    'pip3 install git+https://github.com/ly4k/ldap3 or pip3 install ldap3-bleeding-edge')
+            channel_binding_kwargs = {'channel_binding': ldap3.TLS_CHANNEL_BINDING}
+
+        if self.username:
+            from ldap3 import NTLM
+            conn = Connection(server,
+                              user=self._ntlm_login(),
+                              password=self.password,
+                              authentication=NTLM,
+                              **channel_binding_kwargs)
+        else:
+            conn = Connection(server)
+
+        if not conn.bind():
+            result = conn.result or {}
+            if result.get('result') == RESULT_STRONGER_AUTH_REQUIRED:
+                raise AuthError(
+                    'NTLM bind rejected: server requires signing, and the installed ldap3 '
+                    'does not support NTLM sign/seal. Use -k (Kerberos), or use ldaps://<host> '
+                    'if reachable, or pass --start-tls.')
+            raise AuthError('Bind failed: %s' % result)
+        return conn
