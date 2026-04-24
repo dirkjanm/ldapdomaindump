@@ -298,9 +298,13 @@ signing fixes."
 
 ---
 
-## Task 3: Enable NTLM sign/seal on plain LDAP
+## Task 3: ~~Enable NTLM sign/seal~~ **DROPPED**
 
-Hardened AD DCs return `strongerAuthRequired` (code 8) to unsigned binds on plain LDAP. NTLM supports sign/seal via `session_security=ldap3.ENCRYPT`; ldap3 is a no-op when the transport is already TLS.
+ldap3 2.9.1 has no NTLM signing support — no `ENCRYPT` constant, no `session_security` kwarg on `Connection`, no sealing code in `do_ntlm_bind`. Verified via introspection on 2026-04-23. Implementing NTLM sign/seal would require either swapping ldap3 or ~200-300 lines of protocol monkey-patching, both out of scope for this PR.
+
+Users who hit `strongerAuthRequired` with NTLM have three working alternatives after this PR: `ldaps://`, `--start-tls` (Task 6), or `-k` Kerberos with GSS integrity (Task 8). The NTLM error path gets a clearer error message as part of Task 4.
+
+**Skip this task. Proceed directly to Task 4.**
 
 **Files:**
 - Modify: `ldapdomaindump/auth.py` (in `_bind_ntlm`)
@@ -373,19 +377,22 @@ sign/seal and is a no-op over TLS."
 
 ---
 
-## Task 4: Improve SIMPLE bind error for `strongerAuthRequired`
+## Task 4: Improve bind errors for `strongerAuthRequired`
 
-SIMPLE binds cannot be signed. When the DC rejects with code 8, surface an actionable message pointing the user at NTLM, Kerberos, LDAPS, or StartTLS.
+Neither SIMPLE nor NTLM can negotiate signing with ldap3 2.9.1. When the DC rejects with code 8, surface an auth-type-specific actionable message pointing the user at the alternatives that actually work: Kerberos, LDAPS, or StartTLS.
 
 **Files:**
 - Modify: `ldapdomaindump/auth.py`
 - Modify: `tests/test_auth.py`
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Write failing tests**
 
 Add to `tests/test_auth.py`:
 
 ```python
+from ldap3 import NTLM
+
+
 @patch('ldapdomaindump.auth.Connection')
 @patch('ldapdomaindump.auth.Server')
 def test_simple_bind_strongerauthrequired_gives_actionable_error(mock_server, mock_connection):
@@ -396,6 +403,7 @@ def test_simple_bind_strongerauthrequired_gives_actionable_error(mock_server, mo
         'description': 'strongerAuthRequired',
         'message': '00002028: LdapErr: ...',
     }
+    mock_conn.authentication = 'SIMPLE'
     mock_connection.return_value = mock_conn
 
     from ldapdomaindump.auth import AuthError
@@ -404,19 +412,64 @@ def test_simple_bind_strongerauthrequired_gives_actionable_error(mock_server, mo
 
     msg = str(exc.value)
     assert 'SIMPLE bind rejected' in msg
-    assert '-at NTLM' in msg
+    assert '-k' in msg
+    assert 'ldaps://' in msg
+    assert '--start-tls' in msg
+
+
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_ntlm_bind_strongerauthrequired_gives_actionable_error(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = False
+    mock_conn.result = {
+        'result': 8,
+        'description': 'strongerAuthRequired',
+        'message': '00002028: LdapErr: ...',
+    }
+    mock_conn.authentication = NTLM
+    mock_connection.return_value = mock_conn
+
+    from ldapdomaindump.auth import AuthError
+    with pytest.raises(AuthError) as exc:
+        build_connection(_ns(authtype='NTLM'))
+
+    msg = str(exc.value)
+    assert 'NTLM bind rejected' in msg
+    assert 'does not support NTLM sign/seal' in msg
     assert '-k' in msg
     assert 'ldaps://' in msg
     assert '--start-tls' in msg
 ```
 
-- [ ] **Step 2: Run test to confirm it fails**
+- [ ] **Step 2: Tighten the pre-existing fragile assertion**
 
-Run: `pytest tests/test_auth.py::test_simple_bind_strongerauthrequired_gives_actionable_error -v`
+The existing `test_failed_bind_raises` asserts `'invalidCredentials' in str(exc.value)`, which relies on Python's `str()` of a dict. Pin the auth attribute and check for a stable error prefix. Replace its body with:
 
-Expected: FAIL — generic "Bind failed" message.
+```python
+@patch('ldapdomaindump.auth.Connection')
+@patch('ldapdomaindump.auth.Server')
+def test_failed_bind_raises(mock_server, mock_connection):
+    mock_conn = MagicMock()
+    mock_conn.bind.return_value = False
+    mock_conn.result = {'result': 49, 'description': 'invalidCredentials'}
+    mock_conn.authentication = NTLM
+    mock_connection.return_value = mock_conn
 
-- [ ] **Step 3: Update `_do_bind` to detect code 8**
+    from ldapdomaindump.auth import AuthError
+    with pytest.raises(AuthError) as exc:
+        build_connection(_ns())
+    assert 'Bind failed' in str(exc.value)
+    assert 'invalidCredentials' in str(exc.value)
+```
+
+- [ ] **Step 3: Run tests to confirm the new ones fail**
+
+Run: `.venv/bin/pytest tests/test_auth.py -v`
+
+Expected: the two new tests fail — generic "Bind failed" message, not the specific hint.
+
+- [ ] **Step 4: Update `_do_bind` to detect code 8 per auth type**
 
 In `ldapdomaindump/auth.py`, replace `_do_bind`:
 
@@ -425,8 +478,14 @@ STRONGER_AUTH_REQUIRED = 8
 
 _SIMPLE_SIGNING_HINT = (
     "SIMPLE bind rejected: server requires signing, and SIMPLE binds cannot "
-    "negotiate signing. Use -at NTLM or -k (both sign over plain LDAP), or "
+    "negotiate signing. Use -k (Kerberos, which signs over plain LDAP), or "
     "use ldaps://<host> if reachable, or pass --start-tls."
+)
+
+_NTLM_SIGNING_HINT = (
+    "NTLM bind rejected: server requires signing, and the installed ldap3 "
+    "does not support NTLM sign/seal. Use -k (Kerberos), or use ldaps://<host> "
+    "if reachable, or pass --start-tls."
 )
 
 
@@ -434,30 +493,33 @@ def _do_bind(conn):
     if conn.bind():
         return
     result = conn.result or {}
-    if (
-        result.get('result') == STRONGER_AUTH_REQUIRED
-        and conn.authentication == 'SIMPLE'
-    ):
-        raise AuthError(_SIMPLE_SIGNING_HINT)
+    if result.get('result') == STRONGER_AUTH_REQUIRED:
+        if conn.authentication == 'SIMPLE':
+            raise AuthError(_SIMPLE_SIGNING_HINT)
+        if conn.authentication == NTLM:
+            raise AuthError(_NTLM_SIGNING_HINT)
     raise AuthError('Bind failed: %s' % result)
 ```
 
-Note: `conn.authentication` is an ldap3 attribute set from the `authentication=` kwarg.
+Note: `conn.authentication` is the ldap3 attribute set from the `authentication=` kwarg. For NTLM it's the ldap3 `NTLM` constant; for SIMPLE it's the string `'SIMPLE'`.
 
-- [ ] **Step 4: Run tests to confirm they pass**
+- [ ] **Step 5: Run all tests**
 
-Run: `pytest tests/test_auth.py -v`
+Run: `.venv/bin/pytest tests/ -v`
 
-Expected: 5 passed.
+Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add ldapdomaindump/auth.py tests/test_auth.py
-git commit -m "feat(auth): give actionable error on SIMPLE strongerAuthRequired
+git commit -m "feat(auth): actionable errors on strongerAuthRequired
 
-Point users at NTLM/Kerberos/LDAPS/StartTLS instead of dumping the raw
-LDAP result dict."
+For SIMPLE and NTLM binds rejected with code 8 on hardened DCs, surface
+an auth-type-specific message pointing at Kerberos / LDAPS / StartTLS —
+the three signing paths that actually work. ldap3 2.9.1 does not support
+NTLM sign/seal, so we guide users to working alternatives instead of
+dumping the raw LDAP result dict."
 ```
 
 ---

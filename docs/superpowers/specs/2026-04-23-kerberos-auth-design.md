@@ -15,7 +15,7 @@ As part of the same refactor, resolve the `strongerAuthRequired` (LDAP error 8) 
 - Support Kerberos authentication to LDAP via a pre-existing ccache file.
 - Work on modern, hardened AD DCs that require signing/sealing on plain LDAP.
 - Work in environments where port 636 is firewalled but plain 389 with StartTLS is reachable.
-- Leave the existing NTLM and SIMPLE auth flows behaviorally unchanged (with the single additive improvement of enabling NTLM sign/seal).
+- Leave the existing NTLM and SIMPLE auth flows behaviorally unchanged.
 - Isolate all authentication logic into one module with a clean, dispatch-driven interface.
 
 ## Non-Goals
@@ -24,6 +24,7 @@ As part of the same refactor, resolve the `strongerAuthRequired` (LDAP error 8) 
 - Replacing `ldap3` with a different LDAP library.
 - Auto-upgrading `ldap://` to `ldaps://` transparently. Silent changes to the security posture are out of scope.
 - Kerberos channel binding (LDAP signing addresses the same class of hardening and is simpler; channel binding is a possible follow-up).
+- **NTLM sign/seal.** ldap3 2.9.1 does not support `session_security=ENCRYPT` — no `ENCRYPT` constant, no `session_security` kwarg, no NTLM sealing in the library. Implementing it would require either a library swap or extensive monkey-patching, both out of scope. Users who hit `strongerAuthRequired` with NTLM have three working alternatives after this PR: LDAPS, `--start-tls`, or `-k` (Kerberos with GSS integrity).
 
 ## Architecture
 
@@ -103,13 +104,16 @@ main()
 
 ## LDAP Signing / Integrity
 
-The `strongerAuthRequired` (LDAP result code 8) error is thrown by hardened AD DCs against unsigned binds on plain LDAP. The fix per auth type:
+The `strongerAuthRequired` (LDAP result code 8) error is thrown by hardened AD DCs against unsigned binds on plain LDAP. The situation per auth type:
 
-- **NTLM** — set `session_security=ldap3.ENCRYPT` on the `Connection`. Enables NTLM sign+seal. Transparent when the transport is already TLS (ldap3 skips the extra sealing layer).
 - **Kerberos** — include `GSS_C_INTEG_FLAG` in the AP-REQ and wrap outgoing LDAP messages with `GSS_Wrap` when the transport is plain. Skipped when transport is TLS.
+- **NTLM** — ldap3 2.9.1 does not support signing. NTLM on plain LDAP will continue to fail against hardened DCs. On `strongerAuthRequired`, we surface:
+
+  > `NTLM bind rejected: server requires signing, and the installed ldap3 does not support NTLM sign/seal. Use -k (Kerberos), or use ldaps://<host> if reachable, or pass --start-tls.`
+
 - **SIMPLE** — cannot be signed. On `strongerAuthRequired`, we surface:
 
-  > `SIMPLE bind rejected: server requires signing, and SIMPLE binds cannot negotiate signing. Use -at NTLM or -k (both sign over plain LDAP), or use ldaps://<host> if reachable, or pass --start-tls.`
+  > `SIMPLE bind rejected: server requires signing, and SIMPLE binds cannot negotiate signing. Use -k (Kerberos, which signs over plain LDAP), or use ldaps://<host> if reachable, or pass --start-tls.`
 
 ## StartTLS
 
