@@ -29,3 +29,51 @@ def test_start_tls_with_ldaps_url_rejected(capsys):
     err = capsys.readouterr().err
     assert '--start-tls' in err
     assert 'ldaps://' in err
+
+
+def test_auth_method_default_is_auto():
+    parser = _build_parser()
+    args = parser.parse_args(['dc.example.local'])
+    assert args.auth_method == 'auto'
+
+
+def test_kerberos_short_flag_parses():
+    parser = _build_parser()
+    args = parser.parse_args(['-k', 'dc.example.local'])
+    assert args.kerberos is True
+
+
+def test_no_pass_flag_parses():
+    parser = _build_parser()
+    args = parser.parse_args(['-no-pass', 'dc.example.local'])
+    assert args.no_pass is True
+
+
+def test_hashes_flag_parses():
+    parser = _build_parser()
+    args = parser.parse_args(['--hashes', 'aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0', 'dc.example.local'])
+    assert args.hashes == 'aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0'
+
+
+def test_aeskey_flag_parses():
+    parser = _build_parser()
+    args = parser.parse_args(['-aesKey', 'a' * 64, 'dc.example.local'])
+    assert args.aesKey == 'a' * 64
+
+
+def test_domain_flag_parses():
+    parser = _build_parser()
+    args = parser.parse_args(['--domain', 'CORP', 'dc.example.local'])
+    assert args.domain == 'CORP'
+
+
+def test_ldap_channel_binding_flag_parses():
+    parser = _build_parser()
+    args = parser.parse_args(['--ldap-channel-binding', 'dc.example.local'])
+    assert args.ldap_channel_binding is True
+
+
+def test_at_authtype_flag_removed():
+    parser = _build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(['-at', 'NTLM', 'dc.example.local'])

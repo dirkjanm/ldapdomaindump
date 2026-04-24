@@ -873,9 +873,22 @@ def _build_parser():
     #Main parameters
     #maingroup = parser.add_argument_group("Main options")
     parser.add_argument("host", type=str, metavar='HOSTNAME', help="Hostname/ip or ldap://host:port connection string to connect to (use ldaps:// to use SSL)")
-    parser.add_argument("-u", "--user", type=str, metavar='USERNAME', help="DOMAIN\\username for authentication, leave empty for anonymous authentication")
-    parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password or LM:NTLM hash, will prompt if not specified")
-    parser.add_argument("-at", "--authtype", type=str, choices=['NTLM', 'SIMPLE'], default='NTLM', help="Authentication type (NTLM or SIMPLE, default: NTLM)")
+    parser.add_argument("-u", "--username", type=str, metavar='USERNAME', help="Username in UPN form: user@domain. For anonymous bind, leave empty.")
+    parser.add_argument("-p", "--password", type=str, metavar='PASSWORD', help="Password for authentication. Prompted if not specified and -no-pass not set.")
+    parser.add_argument("-k", "--kerberos", action='store_true', default=False,
+                        help="Use Kerberos authentication (via KRB5CCNAME ccache). Implies --auth-method kerberos.")
+    parser.add_argument("--hashes", type=str, metavar='LMHASH:NTHASH', default=None,
+                        help="NTLM hashes in LM:NT format (LM can be blank). RC4/NT half is also used for Kerberos with --auth-method kerberos.")
+    parser.add_argument("-no-pass", dest='no_pass', action='store_true', default=False,
+                        help="Don't prompt for a password (impacket idiom; use with -k, --hashes, or -aesKey).")
+    parser.add_argument("-aesKey", dest='aesKey', type=str, metavar='HEXKEY', default=None,
+                        help="AES 128 (32 hex) or 256 (64 hex) Kerberos key (camelCase per impacket convention).")
+    parser.add_argument("--auth-method", dest='auth_method', choices=['auto', 'ntlm', 'kerberos'], default='auto',
+                        help="Authentication method (default: auto — try Kerberos if possible, else NTLM).")
+    parser.add_argument("--domain", type=str, metavar='DOMAIN', default=None,
+                        help="Realm, used when username does not embed a realm (user@domain).")
+    parser.add_argument("--ldap-channel-binding", dest='ldap_channel_binding', action='store_true', default=False,
+                        help="Apply EPA channel binding over LDAPS (requires patched ldap3).")
 
     #Output parameters
     outputgroup = parser.add_argument_group("Output options")
