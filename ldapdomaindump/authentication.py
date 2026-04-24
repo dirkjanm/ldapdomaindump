@@ -105,3 +105,29 @@ class ADAuthentication(object):
             return False
         log.info('Found TGT with correct principal in ccache')
         return True
+
+    def get_tgt(self):
+        """Request a Kerberos TGT using our provided credentials."""
+        username = Principal(self.username, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+        log.info('Getting TGT for user')
+        try:
+            tgt, cipher, _, session_key = getKerberosTGT(
+                username, self.password, self.userdomain,
+                unhexlify(self.lm_hash), unhexlify(self.nt_hash),
+                self.aeskey, self.userdomain_kdc)
+        except Exception as exc:
+            log.debug(traceback.format_exc())
+            if self.auth_method == 'auto':
+                log.warning('Failed to get Kerberos TGT; will fall back to NTLM: %s', exc)
+                return
+            log.error('Failed to get Kerberos TGT.')
+            raise
+
+        if self.userdomain != self.domain:
+            self._get_cross_realm_tgt(tgt, cipher, session_key)
+        else:
+            self.tgt = {'KDC_REP': tgt, 'cipher': cipher, 'sessionKey': session_key}
+
+    def _get_cross_realm_tgt(self, tgt, cipher, session_key):
+        """Placeholder — cross-realm TGT walking added in the next task."""
+        raise NotImplementedError('cross-realm TGT handling not yet implemented')

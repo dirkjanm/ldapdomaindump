@@ -1,4 +1,5 @@
 import pytest
+from binascii import unhexlify
 from ldapdomaindump.authentication import ADAuthentication
 
 
@@ -111,3 +112,71 @@ def test_load_ccache_no_matching_credential_returns_false(mock_ccache_cls, mock_
     auth = ADAuthentication(username='alice', password='', domain='corp.local',
                             auth_method='kerberos', ldap_channel_binding=False)
     assert auth.load_ccache() is False
+
+
+@patch('ldapdomaindump.authentication.getKerberosTGT')
+def test_get_tgt_single_realm_populates_self_tgt(mock_get_tgt):
+    cipher = MagicMock()
+    session_key = MagicMock()
+    mock_get_tgt.return_value = (b'TGT_BYTES', cipher, None, session_key)
+
+    auth = ADAuthentication(username='alice@corp.local', password='pw',
+                            domain='corp.local', auth_method='kerberos',
+                            ldap_channel_binding=False, kdc='dc.corp.local')
+    auth.userdomain_kdc = 'dc.corp.local'
+
+    auth.get_tgt()
+
+    assert auth.tgt == {
+        'KDC_REP': b'TGT_BYTES',
+        'cipher': cipher,
+        'sessionKey': session_key,
+    }
+    # Signature per impacket: (principal, password, domain, lm_hash_bytes, nt_hash_bytes, aeskey, kdc)
+    args, _ = mock_get_tgt.call_args
+    principal, password, domain, lm_bytes, nt_bytes, aeskey, kdc = args
+    assert str(principal) == 'alice'
+    assert password == 'pw'
+    assert domain == 'corp.local'
+    assert lm_bytes == b''
+    assert nt_bytes == b''
+    assert aeskey == ''
+    assert kdc == 'dc.corp.local'
+
+
+@patch('ldapdomaindump.authentication.getKerberosTGT',
+       side_effect=Exception('pre-auth failed'))
+def test_get_tgt_raises_when_auth_method_kerberos(mock_get_tgt):
+    auth = ADAuthentication(username='alice@corp.local', password='pw',
+                            domain='corp.local', auth_method='kerberos',
+                            ldap_channel_binding=False, kdc='dc.corp.local')
+    with pytest.raises(Exception):
+        auth.get_tgt()
+
+
+@patch('ldapdomaindump.authentication.getKerberosTGT',
+       side_effect=Exception('pre-auth failed'))
+def test_get_tgt_returns_silently_when_auto(mock_get_tgt):
+    auth = ADAuthentication(username='alice@corp.local', password='pw',
+                            domain='corp.local', auth_method='auto',
+                            ldap_channel_binding=False, kdc='dc.corp.local')
+    # auto mode: BH.py swallows the exception and returns so the caller can fall back
+    auth.get_tgt()
+    assert auth.tgt is None
+
+
+@patch('ldapdomaindump.authentication.getKerberosTGT')
+def test_get_tgt_unhexlifies_hashes(mock_get_tgt):
+    mock_get_tgt.return_value = (b'TGT', MagicMock(), None, MagicMock())
+    auth = ADAuthentication(username='alice@corp.local', password='',
+                            domain='corp.local', auth_method='kerberos',
+                            ldap_channel_binding=False, kdc='dc.corp.local',
+                            lm_hash='aad3b435b51404eeaad3b435b51404ee',
+                            nt_hash='31d6cfe0d16ae931b73c59d7e0c089c0')
+    auth.userdomain_kdc = 'dc.corp.local'
+    auth.get_tgt()
+
+    args, _ = mock_get_tgt.call_args
+    _, _, _, lm_bytes, nt_bytes, _, _ = args
+    assert lm_bytes == unhexlify('aad3b435b51404eeaad3b435b51404ee')
+    assert nt_bytes == unhexlify('31d6cfe0d16ae931b73c59d7e0c089c0')
