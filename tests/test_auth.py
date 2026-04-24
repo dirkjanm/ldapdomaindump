@@ -127,6 +127,7 @@ def test_ntlm_bind_strongerauthrequired_gives_actionable_error(mock_server, mock
     assert 'does not support NTLM sign/seal' in msg
     assert '-k' in msg
     assert 'ldaps://' in msg
+    assert '--start-tls' in msg
 
 
 def test_build_server_defaults_to_validating_tls():
