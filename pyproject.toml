@@ -16,8 +16,9 @@ license-files = ["LICENSE"]
 dependencies = [
   "dnspython",
   "impacket>=0.9.17",
-  "ldap3>=2.5,!=2.5.2,!=2.5.0,!=2.6",
-  "pyasn1>=0.4"
+  "ldap3 @ git+https://github.com/ly4k/ldap3",
+  "pyasn1>=0.4",
+  "pycryptodome"
 ]
 
 [project.optional-dependencies]
