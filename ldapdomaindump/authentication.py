@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 class ADAuthentication(object):
     def __init__(self, username='', password='', domain='', auth_method='auto',
                  ldap_channel_binding=False, lm_hash='', nt_hash='', aeskey='',
-                 kdc=None, use_ccache=False):
+                 kdc=None, use_ccache=False, start_tls=False):
         self.username = username
         self.domain = domain.lower() if domain else ''
         self.userdomain = self.domain
@@ -59,7 +59,18 @@ class ADAuthentication(object):
         self.auth_method = auth_method
         self.ldap_channel_binding = ldap_channel_binding
         self.use_ccache = use_ccache
+        self.start_tls = start_tls
         self.tgt = None
+
+    def _maybe_start_tls(self, conn):
+        """Open the socket and run StartTLS if --start-tls was requested."""
+        if not self.start_tls:
+            return
+        conn.open(read_server_info=False)
+        if not conn.start_tls():
+            from ldapdomaindump.auth import AuthError
+            raise AuthError('StartTLS failed: %s' % (conn.result or {}))
+        log.debug('StartTLS established')
 
     def set_aeskey(self, aeskey):
         self.aeskey = aeskey
@@ -159,7 +170,8 @@ class ADAuthentication(object):
 
     def ldap_kerberos(self, connection, hostname):
         """Bind `connection` using our TGT, via SASL GSSAPI with an impacket-built AP-REQ."""
-        connection.open(read_server_info=False)
+        if connection.closed:
+            connection.open(read_server_info=False)
 
         username = Principal(self.username, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
         servername = Principal('ldap/%s' % hostname,
@@ -288,14 +300,15 @@ class ADAuthentication(object):
             try:
                 self._ensure_tgt()
                 conn = Connection(server, authentication=SASL, sasl_mechanism=KERBEROS)
+                self._maybe_start_tls(conn)
                 ok = self.ldap_kerberos(conn, hostname)
                 if not ok:
                     raise AuthError('Kerberos SASL bind rejected by server')
                 return conn
-            except AuthError:
+            except AuthError as exc:
                 if self.auth_method == 'kerberos' or self._kerberos_forced():
                     raise
-                log.warning('Kerberos failed; falling back to NTLM')
+                log.warning('Kerberos failed (%s); falling back to NTLM', exc)
                 self.tgt = None
             except Exception as exc:
                 if self.auth_method == 'kerberos' or self._kerberos_forced():
@@ -326,6 +339,7 @@ class ADAuthentication(object):
         else:
             conn = Connection(server)
 
+        self._maybe_start_tls(conn)
         if not conn.bind():
             result = conn.result or {}
             if result.get('result') == RESULT_STRONGER_AUTH_REQUIRED:

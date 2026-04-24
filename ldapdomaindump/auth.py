@@ -107,6 +107,7 @@ def build_connection(args):
         nt_hash=nt_hash,
         aeskey=args.aesKey or '',
         use_ccache=bool(args.kerberos),
+        start_tls=getattr(args, 'start_tls', False),
     )
     auth.set_kdc(hostname)
     if args.aesKey:
