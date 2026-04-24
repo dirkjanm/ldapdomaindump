@@ -129,5 +129,30 @@ class ADAuthentication(object):
             self.tgt = {'KDC_REP': tgt, 'cipher': cipher, 'sessionKey': session_key}
 
     def _get_cross_realm_tgt(self, tgt, cipher, session_key):
-        """Placeholder — cross-realm TGT walking added in the next task."""
-        raise NotImplementedError('cross-realm TGT handling not yet implemented')
+        """Walk krbtgt referrals until we land in the target realm, then store as self.tgt.
+
+        Propagates KerberosError (and underlying network exceptions) from getKerberosTGS;
+        the caller (get_tgt) is responsible for auth_method-aware handling.
+        """
+        username = Principal(self.username, type=constants.PrincipalNameType.NT_PRINCIPAL.value)  # noqa: F841
+        servername = Principal('krbtgt/%s' % self.domain,
+                               type=constants.PrincipalNameType.NT_SRV_INST.value)
+        tgs, cipher, _, sessionkey = getKerberosTGS(
+            servername, self.userdomain, self.userdomain_kdc, tgt, cipher, session_key)
+
+        while True:
+            decoded_tgs = decoder.decode(tgs, asn1Spec=TGS_REP())[0]
+            next_realm = str(decoded_tgs['ticket']['sname']['name-string'][1])
+            if next_realm.upper() == self.domain.upper():
+                break
+            log.debug('Following referral across trust to get next TGT')
+            servername = Principal('krbtgt/%s' % self.domain,
+                                   type=constants.PrincipalNameType.NT_SRV_INST.value)
+            tgs, cipher, _, sessionkey = getKerberosTGS(
+                servername, next_realm, next_realm, tgs, cipher, sessionkey)
+
+        servername = Principal('krbtgt/%s' % self.domain,
+                               type=constants.PrincipalNameType.NT_SRV_INST.value)
+        tgs, cipher, _, sessionkey = getKerberosTGS(
+            servername, self.domain, self.kdc, tgs, cipher, sessionkey)
+        self.tgt = {'KDC_REP': tgs, 'cipher': cipher, 'sessionKey': sessionkey}
