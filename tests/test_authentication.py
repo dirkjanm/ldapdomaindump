@@ -211,3 +211,76 @@ def test_get_tgt_cross_realm_walks_referrals(mock_get_tgt, mock_get_tgs):
 
     assert auth.tgt['KDC_REP'] == b'FOREIGN_TGT'
     assert mock_get_tgs.call_count == 3
+
+
+from tests.fixtures import fake_tgt
+
+
+@patch('ldapdomaindump.authentication.CheckSumField')
+@patch('ldapdomaindump.authentication.bind_operation', return_value='bind_req_obj')
+@patch('ldapdomaindump.authentication.encoder')
+@patch('ldapdomaindump.authentication.seq_set')
+@patch('ldapdomaindump.authentication.Authenticator')
+@patch('ldapdomaindump.authentication.AP_REQ')
+@patch('ldapdomaindump.authentication.Ticket')
+@patch('ldapdomaindump.authentication.decoder')
+@patch('ldapdomaindump.authentication.getKerberosTGS')
+def test_ldap_kerberos_fetches_ldap_tgs_and_sends_bind(
+        mock_get_tgs, mock_decoder, mock_ticket_cls, mock_ap_req_cls,
+        mock_auth_cls, mock_seq_set, mock_encoder, mock_bind_op, mock_chk_cls):
+    mock_get_tgs.return_value = (b'LDAP_TGS_BYTES',
+                                 MagicMock(enctype=18), None, MagicMock())
+    mock_decoder.decode.return_value = (MagicMock(), None)
+    mock_encoder.encode.side_effect = [b'ENCODED_AUTH', b'ENCODED_APREQ']
+
+    auth = ADAuthentication(username='alice@corp.local', password='pw',
+                            domain='corp.local', auth_method='kerberos',
+                            ldap_channel_binding=False, kdc='dc.corp.local')
+    auth.tgt = fake_tgt()
+
+    fake_conn = MagicMock()
+    fake_conn.version = 3
+    fake_conn.socket.getpeercert.side_effect = AttributeError  # no TLS
+    fake_conn.post_send_single_response.return_value = [{'result': 0}]
+
+    ok = auth.ldap_kerberos(fake_conn, 'dc.corp.local')
+
+    assert ok is True
+    assert fake_conn.bound is True
+    fake_conn.refresh_server_info.assert_called_once()
+    # TGS requested with servername ldap/<hostname>
+    args, _ = mock_get_tgs.call_args
+    servername = args[0]
+    assert str(servername).startswith('ldap/')
+
+
+@patch('ldapdomaindump.authentication.CheckSumField')
+@patch('ldapdomaindump.authentication.bind_operation', return_value='bind_req_obj')
+@patch('ldapdomaindump.authentication.encoder')
+@patch('ldapdomaindump.authentication.seq_set')
+@patch('ldapdomaindump.authentication.Authenticator')
+@patch('ldapdomaindump.authentication.AP_REQ')
+@patch('ldapdomaindump.authentication.Ticket')
+@patch('ldapdomaindump.authentication.decoder')
+@patch('ldapdomaindump.authentication.getKerberosTGS')
+def test_ldap_kerberos_returns_false_on_nonzero_result(
+        mock_get_tgs, mock_decoder, mock_ticket_cls, mock_ap_req_cls,
+        mock_auth_cls, mock_seq_set, mock_encoder, mock_bind_op, mock_chk_cls):
+    mock_get_tgs.return_value = (b'LDAP_TGS_BYTES',
+                                 MagicMock(enctype=18), None, MagicMock())
+    mock_decoder.decode.return_value = (MagicMock(), None)
+    mock_encoder.encode.side_effect = [b'ENCODED_AUTH', b'ENCODED_APREQ']
+
+    auth = ADAuthentication(username='alice@corp.local', password='pw',
+                            domain='corp.local', auth_method='kerberos',
+                            ldap_channel_binding=False, kdc='dc.corp.local')
+    auth.tgt = fake_tgt()
+
+    fake_conn = MagicMock()
+    fake_conn.version = 3
+    fake_conn.socket.getpeercert.side_effect = AttributeError
+    fake_conn.post_send_single_response.return_value = [{'result': 49}]
+
+    ok = auth.ldap_kerberos(fake_conn, 'dc.corp.local')
+    assert ok is False
+    fake_conn.refresh_server_info.assert_not_called()

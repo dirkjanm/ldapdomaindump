@@ -156,3 +156,78 @@ class ADAuthentication(object):
         tgs, cipher, _, sessionkey = getKerberosTGS(
             servername, self.domain, self.kdc, tgs, cipher, sessionkey)
         self.tgt = {'KDC_REP': tgs, 'cipher': cipher, 'sessionKey': sessionkey}
+
+    def ldap_kerberos(self, connection, hostname):
+        """Bind `connection` using our TGT, via SASL GSSAPI with an impacket-built AP-REQ."""
+        connection.open(read_server_info=False)
+
+        username = Principal(self.username, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+        servername = Principal('ldap/%s' % hostname,
+                               type=constants.PrincipalNameType.NT_SRV_INST.value)
+        tgs, cipher, _, sessionkey = getKerberosTGS(
+            servername, self.domain, self.kdc,
+            self.tgt['KDC_REP'], self.tgt['cipher'], self.tgt['sessionKey'])
+
+        blob = SPNEGO_NegTokenInit()
+        blob['MechTypes'] = [TypesMech['MS KRB5 - Microsoft Kerberos 5']]
+
+        tgs = decoder.decode(tgs, asn1Spec=TGS_REP())[0]
+        ticket = Ticket()
+        ticket.from_asn1(tgs['ticket'])
+
+        apReq = AP_REQ()
+        apReq['pvno'] = 5
+        apReq['msg-type'] = int(constants.ApplicationTagNumbers.AP_REQ.value)
+        apReq['ap-options'] = constants.encodeFlags([])
+        seq_set(apReq, 'ticket', ticket.to_asn1)
+
+        authenticator = Authenticator()
+        authenticator['authenticator-vno'] = 5
+        authenticator['crealm'] = self.userdomain
+        seq_set(authenticator, 'cname', username.components_to_asn1)
+        now = datetime.datetime.utcnow()
+        authenticator['cusec'] = now.microsecond
+        authenticator['ctime'] = KerberosTime.to_asn1(now)
+
+        bindings = self._compute_channel_bindings(connection)
+
+        authenticator['cksum'] = noValue
+        authenticator['cksum']['cksumtype'] = 0x8003
+        chkField = CheckSumField()
+        chkField['Lgth'] = 16
+        if bindings:
+            chkField['Bnd'] = bindings
+        chkField['Flags'] = 0
+        authenticator['cksum']['checksum'] = chkField.getData()
+
+        encoded_auth = encoder.encode(authenticator)
+        encrypted_auth = cipher.encrypt(sessionkey, 11, encoded_auth, None)
+
+        apReq['authenticator'] = noValue
+        apReq['authenticator']['etype'] = cipher.enctype
+        apReq['authenticator']['cipher'] = encrypted_auth
+
+        blob['MechToken'] = encoder.encode(apReq)
+
+        request = bind_operation(connection.version, SASL, None, None,
+                                 connection.sasl_mechanism, blob.getData())
+        response = connection.post_send_single_response(
+            connection.send('bindRequest', request, None))[0]
+        connection.result = response
+        if response['result'] == 0:
+            connection.bound = True
+            connection.refresh_server_info()
+        return response['result'] == 0
+
+    def _compute_channel_bindings(self, connection):
+        """Compute GSS channel-binding MD5 for TLS server-end-point (RFC 5929).
+
+        Returns bytes (16) or None if no TLS / no peercert.
+        """
+        try:
+            peercert = connection.socket.getpeercert(binary_form=True)
+        except AttributeError:
+            return None
+        if not peercert:
+            return None
+        return b''  # full RFC 5929 computation added in the next task
