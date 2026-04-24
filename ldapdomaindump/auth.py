@@ -4,7 +4,7 @@ All LDAP bind logic lives here behind build_connection(args). main() is
 expected to call build_connection() once and hand the resulting bound
 Connection to domainDumper.
 """
-from ldap3 import Server, Connection, ALL, NTLM
+from ldap3 import Server, Connection, ALL, NTLM, SIMPLE
 
 
 class AuthError(RuntimeError):
@@ -43,7 +43,7 @@ def _bind_simple(server, args):
         server,
         user=args.user,
         password=args.password,
-        authentication='SIMPLE',
+        authentication=SIMPLE,
     )
     _do_bind(conn)
     return conn
@@ -75,7 +75,7 @@ def _do_bind(conn):
         return
     result = conn.result or {}
     if result.get('result') == STRONGER_AUTH_REQUIRED:
-        if conn.authentication == 'SIMPLE':
+        if conn.authentication == SIMPLE:
             raise AuthError(_SIMPLE_SIGNING_HINT)
         if conn.authentication == NTLM:
             raise AuthError(_NTLM_SIGNING_HINT)
