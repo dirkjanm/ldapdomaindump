@@ -343,7 +343,16 @@ class domainDumper():
     def mapGroupsIdsToDns(self):
         dnmap = {}
         for group in self.groups:
-            gid = int(group.objectSid.value.split('-')[-1])
+            try:
+                # objectSid.value may still be the raw binary SID (bytes) when
+                # ldap3's SID formatter did not run, e.g. against DCs that allow
+                # a partial/anonymous bind (HTB Forest, some Vulnlab machines).
+                # Decode it from raw_values the same way formatAttribute() does
+                # for the securityidentifier/objectsid attributes, so a single
+                # unparseable group no longer aborts the whole dump.
+                gid = int(format_sid(group.objectSid.raw_values[0]).split('-')[-1])
+            except (LDAPKeyError, LDAPAttributeError, LDAPCursorError, IndexError, ValueError):
+                continue
             dnmap[gid] = group.distinguishedName.values[0]
         self.groups_dnmap = dnmap
         return dnmap
