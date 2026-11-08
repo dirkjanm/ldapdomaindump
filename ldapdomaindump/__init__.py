@@ -454,14 +454,16 @@ class reportWriter():
         if isinstance(length, timedelta):
             return length.total_seconds() / 86400
         else:
-            return abs(length) * .0000001 / 86400
+            # Some servers return this value as a string instead of an int
+            return abs(float(length)) * .0000001 / 86400
 
     def nsToMinutes(self, length):
         # ldap3 >= 2.6 returns timedelta
         if isinstance(length, timedelta):
             return length.total_seconds() / 60
         else:
-            return abs(length) * .0000001 / 60
+            # Some servers return this value as a string instead of an int
+            return abs(float(length)) * .0000001 / 60
 
     #Parse bitwise flags into a list
     def parseFlags(self, attr, flags_def):
